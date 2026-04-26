@@ -1311,6 +1311,7 @@ input:focus {
   color: var(--text2);
   font-size: 0.88rem;
   margin-bottom: 20px;
+  white-space: pre-line;
 }
 
 .confirm-modal .btn-row {
@@ -1903,7 +1904,6 @@ let rollInProgress = false;
 function rollNextMode() {
   const sess = state.session;
   if (!sess || rollInProgress) return;
-  if (sess.currentGameStarted) { toast('המשחק כבר התחיל'); return; }
   rollInProgress = true;
   const targets = [...SPECIAL_MODE_IDS, 'normal'];
   const finalMode = targets[Math.floor(Math.random() * targets.length)];
@@ -1956,8 +1956,7 @@ function rollNextMode() {
       `;
       rollInProgress = false;
       save();
-      // Re-render leaderboard so start button refreshes etc.
-      renderLeaderboard();
+      renderAll();
     }
   };
   tick();
@@ -1970,6 +1969,22 @@ function setKnockoutCount(fid, val) {
   const n = Math.max(0, parseInt(val) || 0);
   sess.currentKnockouts[fid] = n;
   save();
+}
+function incKnockout(fid) {
+  const sess = state.session;
+  if (!sess) return;
+  if (!sess.currentKnockouts) sess.currentKnockouts = {};
+  sess.currentKnockouts[fid] = (sess.currentKnockouts[fid] || 0) + 1;
+  save();
+  renderGameArea();
+}
+function resetKnockout(fid) {
+  const sess = state.session;
+  if (!sess) return;
+  if (!sess.currentKnockouts) sess.currentKnockouts = {};
+  sess.currentKnockouts[fid] = 0;
+  save();
+  renderGameArea();
 }
 
 function toggleInteractiveMode() {
@@ -2091,34 +2106,13 @@ function renderSessionControl() {
     `;
   }
 
-  // Interactive mode block
+  // Interactive mode toggle
   let interactiveBlock = '';
-  const curMode = sess.currentMode || 'normal';
-  const curModeDef = GAME_MODES[curMode] || GAME_MODES.normal;
-  const canRoll = !sess.currentGameStarted;
   if (sess.interactiveMode) {
-    let modeBox = `
-      <div id="mode-display">
-        <div style="padding:12px;border-radius:10px;border:2px solid ${curModeDef.color};background:${curModeDef.color}20;text-align:center;">
-          <div style="font-size:0.7rem;color:var(--text3);margin-bottom:4px;">המוד למשחק הבא:</div>
-          <div style="font-size:1.6rem;">${curModeDef.emoji}</div>
-          <div style="font-size:0.95rem;font-weight:700;color:${curModeDef.color};">${curModeDef.name}</div>
-          <div style="font-size:0.72rem;color:var(--text);margin-top:4px;">${curModeDef.desc}</div>
-          ${curMode === 'hunted' && sess.currentHuntedId ? `
-            <div style="margin-top:6px;font-size:0.85rem;font-weight:700;color:#ffb84d;">
-              🎯 הניצוד: ${getAvatar(sess.fighters.find(f => f.id === sess.currentHuntedId))} ${sess.fighters.find(f => f.id === sess.currentHuntedId)?.name || ''}
-            </div>
-          ` : ''}
-        </div>
-      </div>
-    `;
     interactiveBlock = `
-      <div style="margin-top:10px;display:flex;flex-direction:column;gap:8px;">
-        ${modeBox}
-        <div style="display:flex;gap:8px;">
-          <button class="btn btn-primary btn-sm" style="flex:1;" onclick="rollNextMode()" ${canRoll ? '' : 'disabled'}>🎲 הגרל מוד למשחק הבא</button>
-          <button class="btn btn-ghost btn-sm" onclick="toggleInteractiveMode()" title="כבה מוד אינטראקטיבי">⏻</button>
-        </div>
+      <div style="margin-top:10px;padding:8px 10px;border-radius:8px;border:1px solid #ff5ac860;background:#ff5ac815;display:flex;align-items:center;justify-content:space-between;gap:8px;">
+        <div style="font-size:0.82rem;color:var(--text);">🎲 מוד אינטראקטיבי פעיל — מוד יוגרל בכל התחלת משחק</div>
+        <button class="btn btn-ghost btn-sm" onclick="toggleInteractiveMode()" title="כבה">⏻</button>
       </div>
     `;
   } else {
@@ -2253,7 +2247,23 @@ function renderGameArea() {
     <div class="panel-title">🎮 משחק #${gameNum}</div>
   `;
 
-  if (isSpecial && sess.currentGameStarted) {
+  if (sess.currentGameStarted && sess.interactiveMode) {
+    // Mode display lives here; rollNextMode() will fill it during the spin and after settle.
+    html += `
+      <div id="mode-display" style="margin-bottom:12px;">
+        <div style="padding:12px;border-radius:10px;border:2px solid ${curModeDef.color};background:${curModeDef.color}20;text-align:center;">
+          <div style="font-size:1.6rem;">${curModeDef.emoji}</div>
+          <div style="font-size:0.95rem;font-weight:700;color:${curModeDef.color};">${curModeDef.name}</div>
+          <div style="font-size:0.72rem;color:var(--text);margin-top:4px;">${curModeDef.desc}</div>
+          ${curMode === 'hunted' && sess.currentHuntedId ? `
+            <div style="margin-top:6px;font-size:0.85rem;font-weight:700;color:#ffb84d;">
+              🎯 הניצוד: ${getAvatar(sess.fighters.find(f => f.id === sess.currentHuntedId))} ${sess.fighters.find(f => f.id === sess.currentHuntedId)?.name || ''}
+            </div>
+          ` : ''}
+        </div>
+      </div>
+    `;
+  } else if (isSpecial && sess.currentGameStarted) {
     html += `
       <div style="margin-bottom:10px;padding:8px 10px;border-radius:8px;border:1px solid ${curModeDef.color}80;background:${curModeDef.color}18;display:flex;align-items:center;gap:8px;">
         <div style="font-size:1.4rem;">${curModeDef.emoji}</div>
@@ -2329,11 +2339,7 @@ function renderGameArea() {
     }
 
     // Knockout counts step (after placements + firstHit selected, only for special modes)
-    let knockoutsReady = true;
     if (isSpecial && allPlaced && firstHitId) {
-      const ko = sess.currentKnockouts || {};
-      const total = sess.currentGameFighters.reduce((acc, f) => acc + (ko[f.id] || 0), 0);
-      knockoutsReady = total > 0;
       let trackedId = null;
       if (curMode === 'palestine') trackedId = sess.currentFirstHitId;
       else if (curMode === 'hunted') trackedId = sess.currentHuntedId;
@@ -2351,29 +2357,28 @@ function renderGameArea() {
             ${curModeDef.emoji} ${heading}
           </div>
           <div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;">
-            ${(curMode === 'underdog' && trackedFighter ? [trackedFighter] : sess.currentGameFighters).map(f => `
-              <div style="display:flex;align-items:center;gap:6px;padding:6px 10px;border-radius:8px;background:var(--bg2);border:1px solid var(--border);">
-                <span style="font-size:1.1rem;">${getAvatar(f)}</span>
-                <span style="font-size:0.8rem;">${f.name}</span>
-                <input type="number" min="0" value="${(sess.currentKnockouts || {})[f.id] || 0}"
-                  onchange="setKnockoutCount(${f.id}, this.value)"
-                  style="width:50px;text-align:center;font-weight:700;" />
-              </div>
-            `).join('')}
+            ${(curMode === 'underdog' && trackedFighter ? [trackedFighter] : sess.currentGameFighters).map(f => {
+              const c = (sess.currentKnockouts || {})[f.id] || 0;
+              return `
+                <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:8px;background:var(--bg2);border:1px solid var(--border);">
+                  <span style="font-size:1.1rem;">${getAvatar(f)}</span>
+                  <span style="font-size:0.8rem;">${f.name}</span>
+                  <span style="min-width:24px;text-align:center;font-weight:700;color:${curModeDef.color};font-size:1rem;">${c}</span>
+                  <button class="btn btn-primary btn-sm" style="padding:2px 10px;font-size:0.85rem;" onclick="incKnockout(${f.id})">+1</button>
+                  ${c > 0 ? `<button class="btn btn-ghost btn-sm" style="padding:2px 8px;font-size:0.75rem;" onclick="resetKnockout(${f.id})" title="אפס">×</button>` : ''}
+                </div>
+              `;
+            }).join('')}
           </div>
         </div>
       `;
     }
 
-    const fullyReady = readyToSave && (!isSpecial || knockoutsReady);
-
     html += `<div class="game-btn-row">`;
-    if (fullyReady) {
+    if (readyToSave) {
       html += `<button class="btn btn-success" onclick="saveGame()">💾 שמור משחק</button>`;
     } else if (allPlaced && !firstHitId) {
       html += `<div class="save-requirement">בחר הומו כדי להמשיך</div>`;
-    } else if (isSpecial && readyToSave && !knockoutsReady) {
-      html += `<div class="save-requirement">הזן כמות נוקאאוטים</div>`;
     }
     html += `<button class="btn btn-ghost btn-sm" onclick="resetPlacements()">🔄 אפס</button>`;
     html += `</div>`;
@@ -2390,8 +2395,14 @@ function startCurrentGame() {
   sess.currentPlacements = {};
   sess.currentFirstHitId = null;
   sess.currentKnockouts = {};
+  sess.currentMode = 'normal';
+  sess.currentHuntedId = null;
   save();
   renderAll();
+  if (sess.interactiveMode) {
+    // small delay so the user sees the game area before the spin starts
+    setTimeout(() => rollNextMode(), 150);
+  }
 }
 
 function handleGameFighterClick(fid) {
@@ -2454,14 +2465,27 @@ function saveGame() {
   }
 
   const mode = sess.currentMode || 'normal';
+
+  // Confirm before finalizing
+  const homo = sess.fighters.find(f => f.id === sess.currentFirstHitId);
+  const modeDef = GAME_MODES[mode] || GAME_MODES.normal;
+  let summary = `הומו המשחק: ${homo ? getAvatar(homo) + ' ' + homo.name : '—'}\nמוד: ${modeDef.emoji} ${modeDef.name}`;
   if (modeRequiresKnockouts(mode)) {
-    const ko = sess.currentKnockouts || {};
-    const total = sess.currentGameFighters.reduce((acc, f) => acc + (ko[f.id] || 0), 0);
-    if (total <= 0) {
-      toast('הזן כמות נוקאאוטים לפני שמירה');
-      return;
-    }
+    const lines = sess.currentGameFighters
+      .map(f => ({ f, c: (sess.currentKnockouts || {})[f.id] || 0 }))
+      .filter(r => r.c > 0)
+      .map(r => `${getAvatar(r.f)} ${r.f.name}: ${r.c}`);
+    if (lines.length) summary += '\nנוקאאוטים: ' + lines.join(', ');
   }
+  confirm2('סיום משחק', `לסיים ולשמור את המשחק?\n${summary}`, () => finalizeSaveGame());
+}
+
+function finalizeSaveGame() {
+  const sess = state.session;
+  if (!sess) return;
+  const placements = { ...sess.currentPlacements };
+  const fighters = [...sess.currentGameFighters];
+  const mode = sess.currentMode || 'normal';
 
   const game = {
     id: Date.now(),
