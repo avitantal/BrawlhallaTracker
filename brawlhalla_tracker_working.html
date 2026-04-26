@@ -1364,6 +1364,48 @@ input:focus {
   animation: confettiFall linear forwards;
 }
 
+/* Hunted reveal — layered on top of mode result */
+.hunted-reveal {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: radial-gradient(circle at center, #1a0a00ee, #000d);
+  animation: rollFadeIn 0.3s ease-out;
+}
+.hunted-reveal-card {
+  text-align: center; color: #ffb84d;
+  animation: huntedReveal 0.7s cubic-bezier(.2,1.4,.4,1) forwards;
+  filter: drop-shadow(0 0 24px #ffb84d);
+}
+.hunted-reveal-status {
+  font-size: 0.8rem; letter-spacing: 4px; text-transform: uppercase;
+  color: #ffb84d; margin-bottom: 14px;
+  animation: huntedPulse 0.9s ease-in-out infinite;
+}
+.hunted-reveal-avatar {
+  font-size: 7rem; line-height: 1;
+  animation: huntedShake 0.4s ease-in-out 0.2s 3;
+}
+.hunted-reveal-name {
+  font-family: 'Cinzel Decorative', serif;
+  font-size: 2rem; font-weight: 800;
+  margin-top: 10px; color: #fff;
+  text-shadow: 0 0 12px #ffb84d, 0 0 24px #ff5a3c;
+}
+@keyframes huntedReveal {
+  0%   { transform: scale(0.3); opacity: 0; }
+  60%  { transform: scale(1.15); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+@keyframes huntedPulse {
+  0%,100% { opacity: 0.6; }
+  50%     { opacity: 1; }
+}
+@keyframes huntedShake {
+  0%,100% { transform: translateX(0); }
+  25% { transform: translateX(-6px); }
+  75% { transform: translateX(6px); }
+}
+
 /* CONFIRM MODAL */
 .confirm-modal-bg {
   position: fixed;
@@ -2017,7 +2059,8 @@ function rollNextMode() {
   const descEl = overlay.querySelector('#mode-roll-desc');
   const statusEl = overlay.querySelector('#mode-roll-status');
 
-  const totalDuration = 3600;
+  // Variable duration for unpredictable suspense
+  const totalDuration = 2800 + Math.random() * 2200;
   const start = performance.now();
   let i = Math.floor(Math.random() * cycle.length);
 
@@ -2080,25 +2123,36 @@ function rollNextMode() {
         card.appendChild(piece);
       }
 
-      if (finalMode === 'hunted' && sess.currentHuntedId) {
-        const hunted = sess.fighters.find(f => f.id === sess.currentHuntedId);
-        const huntedEl = document.createElement('div');
-        huntedEl.style.cssText = 'margin-top:14px;font-size:1rem;font-weight:800;color:#ffb84d;';
-        huntedEl.innerHTML = `🎯 הניצוד: ${getAvatar(hunted)} ${hunted.name}`;
-        card.appendChild(huntedEl);
-      }
-
       save();
 
-      // Hold the result on screen, then dismiss
-      setTimeout(() => {
+      const dismiss = () => {
         overlay.classList.add('fade-out');
         setTimeout(() => {
           overlay.remove();
           rollInProgress = false;
           renderAll();
         }, 320);
-      }, 1900);
+      };
+
+      if (finalMode === 'hunted' && sess.currentHuntedId) {
+        // After 3s on the result, drop a layered hunted reveal on top
+        setTimeout(() => {
+          const hunted = sess.fighters.find(f => f.id === sess.currentHuntedId);
+          const huntedLayer = document.createElement('div');
+          huntedLayer.className = 'hunted-reveal';
+          huntedLayer.innerHTML = `
+            <div class="hunted-reveal-card">
+              <div class="hunted-reveal-status">🎯 הניצוד הוא...</div>
+              <div class="hunted-reveal-avatar">${getAvatar(hunted)}</div>
+              <div class="hunted-reveal-name">${hunted.name}</div>
+            </div>
+          `;
+          overlay.appendChild(huntedLayer);
+          setTimeout(dismiss, 2400);
+        }, 3000);
+      } else {
+        setTimeout(dismiss, 1900);
+      }
     }
   };
   tick();
