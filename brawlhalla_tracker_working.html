@@ -1557,28 +1557,33 @@ function switchTab(tab) {
 }
 
 // ==================== STATE ====================
-const DEFAULTS = {
-  fighters: [],
-  session: null,
-  archive: [],
-  scoring: { 1: 10, 2: 6, 3: 3, 4: 1 }
-};
-
 let state = {
   fighters: [],
-  session: null,
+  sessions: [],
+  activeSessionId: null,
   archive: [],
   scoring: { 1: 10, 2: 6, 3: 3, 4: 1 },
-  currentGameFighters: [],
-  currentPlacements: {},
-  currentFirstHitId: null,
   editingFighter: null
 };
+
+Object.defineProperty(state, 'session', {
+  get() { return this.sessions.find(s => s.id === this.activeSessionId) || null; }
+});
+
+function ensureSessionDefaults(s) {
+  if (!s) return s;
+  if (!s.currentPlacements) s.currentPlacements = {};
+  if (typeof s.currentGameStarted !== 'boolean') s.currentGameStarted = false;
+  if (typeof s.currentFirstHitId === 'undefined') s.currentFirstHitId = null;
+  if (!Array.isArray(s.currentGameFighters)) s.currentGameFighters = [...s.fighters];
+  return s;
+}
 
 // ==================== PERSISTENCE ====================
 function save() {
   localStorage.setItem('brawl_fighters', JSON.stringify(state.fighters));
-  localStorage.setItem('brawl_session', JSON.stringify(state.session));
+  localStorage.setItem('brawl_sessions', JSON.stringify(state.sessions));
+  localStorage.setItem('brawl_active_session_id', JSON.stringify(state.activeSessionId));
   localStorage.setItem('brawl_archive', JSON.stringify(state.archive));
   localStorage.setItem('brawl_scoring', JSON.stringify(state.scoring));
 }
@@ -1586,11 +1591,30 @@ function save() {
 function load() {
   try {
     state.fighters = JSON.parse(localStorage.getItem('brawl_fighters') || '[]');
-    state.session = JSON.parse(localStorage.getItem('brawl_session') || 'null');
+    state.sessions = JSON.parse(localStorage.getItem('brawl_sessions') || '[]');
+    state.activeSessionId = JSON.parse(localStorage.getItem('brawl_active_session_id') || 'null');
+    // Migrate legacy single-session storage
+    const legacy = JSON.parse(localStorage.getItem('brawl_session') || 'null');
+    if (legacy && !state.sessions.find(s => s.id === legacy.id)) {
+      state.sessions.push(legacy);
+      if (!state.activeSessionId) state.activeSessionId = legacy.id;
+      localStorage.removeItem('brawl_session');
+    }
+    state.sessions.forEach(ensureSessionDefaults);
+    if (state.activeSessionId && !state.sessions.find(s => s.id === state.activeSessionId)) {
+      state.activeSessionId = state.sessions[0]?.id || null;
+    }
     state.archive = JSON.parse(localStorage.getItem('brawl_archive') || '[]');
     const sc = JSON.parse(localStorage.getItem('brawl_scoring') || 'null');
     if (sc) state.scoring = sc;
   } catch(e) {}
+}
+
+function switchSession(id) {
+  if (!state.sessions.find(s => s.id === id)) return;
+  state.activeSessionId = id;
+  save();
+  renderAll();
 }
 
 // ==================== TOAST ====================
@@ -1834,59 +1858,90 @@ function renderSessionControl() {
   const el = document.getElementById('session-control-area');
   const endPanel = document.getElementById('session-end-panel');
   const endArea = document.getElementById('session-end-area');
+
+  const sessionsList = state.sessions.length ? `
+    <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px;">
+      ${state.sessions.map(s => {
+        const isActive = s.id === state.activeSessionId;
+        const fightersPreview = s.fighters.slice(0, 4).map(f => getAvatar(f)).join('');
+        return `
+          <div onclick="switchSession(${s.id})"
+            style="cursor:pointer;padding:8px 10px;border-radius:8px;display:flex;align-items:center;gap:8px;
+                   border:1px solid ${isActive ? '#40e0c8' : 'var(--border)'};
+                   background:${isActive ? '#40e0c818' : 'transparent'};
+                   font-size:0.82rem;">
+            <div style="font-size:1rem;">${isActive ? '🟢' : '⚪'}</div>
+            <div style="flex:1;min-width:0;">
+              <div style="font-weight:700;color:var(--text);">סשן ${fmtTime(s.startTime)} · ${s.games.length} משחקים</div>
+              <div style="font-size:0.95rem;letter-spacing:1px;">${fightersPreview}${s.fighters.length > 4 ? '…' : ''}</div>
+            </div>
+          </div>
+        `;
+      }).join('')}
+    </div>
+  ` : '';
+
+  const startBtn = `
+    <button class="btn btn-primary btn-sm" style="width:100%" onclick="openSessionOverlay()">🎮 התחל סשן חדש</button>
+  `;
+
   if (!state.session) {
     el.innerHTML = `
       <div class="session-control">
-        <div class="no-session-msg">לא קיים סשן פעיל כרגע</div>
-        <button class="btn btn-primary" style="width:100%" onclick="openSessionOverlay()">🎮 התחל סשן חדש</button>
+        ${state.sessions.length ? sessionsList : '<div class="no-session-msg">לא קיים סשן פעיל כרגע</div>'}
+        ${startBtn}
       </div>
     `;
     if (endPanel && endArea) {
       endPanel.classList.add('hidden');
       endArea.innerHTML = '';
     }
-  } else {
-    const games = state.session.games.length;
-    const start = fmtTime(state.session.startTime);
+    return;
+  }
 
-    const firstHitCounts = {};
-    state.session.games.forEach(g => {
-      if (g.firstHitId) firstHitCounts[g.firstHitId] = (firstHitCounts[g.firstHitId] || 0) + 1;
-    });
-    let maxHits = 0;
-    Object.values(firstHitCounts).forEach(c => { if (c > maxHits) maxHits = c; });
-    const topHomos = state.session.fighters.filter(f => firstHitCounts[f.id] === maxHits && maxHits > 0);
+  const sess = state.session;
+  const games = sess.games.length;
+  const start = fmtTime(sess.startTime);
 
-    let homoBadge = '';
-    if (topHomos.length > 0) {
-      const chart = homoCandleChart(state.session.fighters, firstHitCounts);
-      homoBadge = `
-        <div style="margin-top:10px; padding:10px; border:1px solid #ff5ac860; border-radius:8px; background:#ff5ac815; display:flex; align-items:center; gap:10px;">
-          <div style="font-size:1.8rem; filter:drop-shadow(0 0 6px #ff5ac8)">💖</div>
-          <div style="flex:1; min-width:0;">
-            <div style="font-size:0.75rem; color:#ffb8e8; font-weight:bold; font-family:'Cinzel', serif;">הומו ההומאים הנוכחי</div>
-            <div style="font-size:0.9rem; font-weight:bold; color:var(--text);">${topHomos.map(f => getAvatar(f) + ' ' + f.name).join(', ')} (${maxHits} מכות)</div>
-          </div>
-          ${chart}
+  const firstHitCounts = {};
+  sess.games.forEach(g => {
+    if (g.firstHitId) firstHitCounts[g.firstHitId] = (firstHitCounts[g.firstHitId] || 0) + 1;
+  });
+  let maxHits = 0;
+  Object.values(firstHitCounts).forEach(c => { if (c > maxHits) maxHits = c; });
+  const topHomos = sess.fighters.filter(f => firstHitCounts[f.id] === maxHits && maxHits > 0);
+
+  let homoBadge = '';
+  if (topHomos.length > 0) {
+    const chart = homoCandleChart(sess.fighters, firstHitCounts);
+    homoBadge = `
+      <div style="margin-top:10px; padding:10px; border:1px solid #ff5ac860; border-radius:8px; background:#ff5ac815; display:flex; align-items:center; gap:10px;">
+        <div style="font-size:1.8rem; filter:drop-shadow(0 0 6px #ff5ac8)">💖</div>
+        <div style="flex:1; min-width:0;">
+          <div style="font-size:0.75rem; color:#ffb8e8; font-weight:bold; font-family:'Cinzel', serif;">הומו ההומאים הנוכחי</div>
+          <div style="font-size:0.9rem; font-weight:bold; color:var(--text);">${topHomos.map(f => getAvatar(f) + ' ' + f.name).join(', ')} (${maxHits} מכות)</div>
         </div>
-      `;
-    }
-
-    el.innerHTML = `
-      <div style="margin-bottom:10px;">
-        <div class="session-badge" style="display:inline-block;margin-bottom:6px;">🟢 סשן פעיל</div>
-        <div class="session-time">התחיל: ${start} | ${games} משחקים</div>
+        ${chart}
       </div>
-      ${homoBadge}
     `;
-    if (endPanel && endArea) {
-      endPanel.classList.remove('hidden');
-      endArea.innerHTML = `
-        <div class="session-control">
-          <button class="btn btn-danger btn-sm" style="width:100%" onclick="endSession()">🏁 סיים וארכב סשן</button>
-        </div>
-      `;
-    }
+  }
+
+  el.innerHTML = `
+    ${sessionsList}
+    <div style="margin-bottom:10px;">
+      <div class="session-badge" style="display:inline-block;margin-bottom:6px;">🟢 סשן פעיל</div>
+      <div class="session-time">התחיל: ${start} | ${games} משחקים</div>
+    </div>
+    ${homoBadge}
+    <div style="margin-top:10px;">${startBtn}</div>
+  `;
+  if (endPanel && endArea) {
+    endPanel.classList.remove('hidden');
+    endArea.innerHTML = `
+      <div class="session-control">
+        <button class="btn btn-danger btn-sm" style="width:100%" onclick="endSession()">🏁 סיים וארכב סשן פעיל</button>
+      </div>
+    `;
   }
 }
 
@@ -1918,23 +1973,22 @@ function confirmSessionStart() {
   const ids = selected.map(c => parseInt(c.dataset.id));
   const fighters = ids.map(id => state.fighters.find(f => f.id === id));
 
-  if (state.session) {
-    archiveCurrentSession();
-  }
-
-  state.session = {
+  const newSession = {
     id: Date.now(),
     startTime: Date.now(),
     endTime: null,
     fighters: fighters.map(f => ({ ...f })),
     games: [],
-    scores: {}
+    scores: {},
+    currentGameStarted: false,
+    currentGameFighters: fighters.map(f => ({ ...f })),
+    currentPlacements: {},
+    currentFirstHitId: null
   };
-  fighters.forEach(f => state.session.scores[f.id] = 0);
+  fighters.forEach(f => newSession.scores[f.id] = 0);
 
-  state.currentGameFighters = [...fighters];
-  state.currentPlacements = {};
-  state.currentFirstHitId = null;
+  state.sessions.push(newSession);
+  state.activeSessionId = newSession.id;
 
   closeSessionOverlay();
   save();
@@ -1943,18 +1997,17 @@ function confirmSessionStart() {
 }
 
 function archiveCurrentSession() {
-  if (!state.session) return;
-  state.session.endTime = Date.now();
-  state.archive.unshift({ ...state.session });
-  state.session = null;
+  const s = state.session;
+  if (!s) return;
+  s.endTime = Date.now();
+  state.archive.unshift({ ...s });
+  state.sessions = state.sessions.filter(x => x.id !== s.id);
+  state.activeSessionId = state.sessions[0]?.id || null;
 }
 
 function endSession() {
   confirm2('סיים סשן', 'האם לסיים את הסשן הנוכחי ולארכב אותו?', () => {
     archiveCurrentSession();
-    state.currentGameFighters = [];
-    state.currentPlacements = {};
-    state.currentFirstHitId = null;
     save();
     renderAll();
     toast('הסשן אורכב! 🏁');
@@ -1976,24 +2029,21 @@ function renderGameArea() {
     return;
   }
 
-  const gameNum = state.session.games.length + 1;
-  const placedCount = Object.keys(state.currentPlacements).length;
-  const totalFighters = state.currentGameFighters.length;
+  const sess = state.session;
+  const gameNum = sess.games.length + 1;
+  const placedCount = Object.keys(sess.currentPlacements).length;
+  const totalFighters = sess.currentGameFighters.length;
   const nextPlace = placedCount + 1;
   const allPlaced = placedCount >= Math.min(totalFighters, 4);
-  const firstHitId = state.currentFirstHitId;
+  const firstHitId = sess.currentFirstHitId;
   const readyToSave = allPlaced && !!firstHitId;
-
-  // Fighter selection for current game
-  const sessionFighters = state.session.fighters;
-  const selectedForGame = state.currentGameFighters;
 
   let html = `
     <div class="panel-title">🎮 משחק #${gameNum}</div>
   `;
 
   // Pre-game: minimal hint (start button is in leaderboard header)
-  if (!state.currentGameStarted) {
+  if (!sess.currentGameStarted) {
     html += `
       <div class="no-session-msg" style="font-size:0.85rem;">
         לחץ על "▶️ התחל משחק" בלוח התהילה כדי להתחיל משחק חדש
@@ -2001,7 +2051,7 @@ function renderGameArea() {
     `;
   }
 
-  if (state.currentGameStarted) {
+  if (sess.currentGameStarted) {
     html += `<div class="game-number-tag">GAME ${gameNum} · בחר סדר סיום</div>`;
 
     if (!allPlaced) {
@@ -2009,8 +2059,8 @@ function renderGameArea() {
     }
 
     html += `<div class="placement-zone">`;
-    html += state.currentGameFighters.map(f => {
-      const place = state.currentPlacements[f.id];
+    html += sess.currentGameFighters.map(f => {
+      const place = sess.currentPlacements[f.id];
       let cardClass = 'fighter-card';
       let badgeHtml = '';
       let labelHtml = '';
@@ -2045,7 +2095,7 @@ function renderGameArea() {
         <div class="first-hit-section">
           <div class="first-hit-title">בחר מי הוא הומו המשחק?</div>
           <div class="first-hit-picker">
-            ${state.currentGameFighters.map(f => `
+            ${sess.currentGameFighters.map(f => `
               <button type="button" class="first-hit-option ${firstHitId === f.id ? 'selected' : ''}" onclick="selectFirstHit(${f.id})">
                 ${getAvatar(f)} ${f.name}
               </button>
@@ -2068,30 +2118,22 @@ function renderGameArea() {
   el.innerHTML = html;
 }
 
-function toggleGameFighter(id) {
-  const f = state.session.fighters.find(x => x.id === id);
-  if (!f) return;
-  const idx = state.currentGameFighters.findIndex(x => x.id === id);
-  if (idx >= 0) {
-    state.currentGameFighters.splice(idx, 1);
-    if (state.currentFirstHitId === id) state.currentFirstHitId = null;
-  } else {
-    state.currentGameFighters.push(f);
-  }
-  renderGameArea();
-}
-
 function startCurrentGame() {
-  if (state.currentGameFighters.length < 2) { toast('בחר לפחות 2 לוחמים!'); return; }
-  state.currentGameStarted = true;
-  state.currentPlacements = {};
-  state.currentFirstHitId = null;
-  renderGameArea();
+  const sess = state.session;
+  if (!sess) return;
+  if (sess.currentGameFighters.length < 2) { toast('בחר לפחות 2 לוחמים!'); return; }
+  sess.currentGameStarted = true;
+  sess.currentPlacements = {};
+  sess.currentFirstHitId = null;
+  save();
+  renderAll();
 }
 
 function handleGameFighterClick(fid) {
-  const placed = Object.keys(state.currentPlacements).length;
-  const maxPlace = Math.min(state.currentGameFighters.length, 4);
+  const sess = state.session;
+  if (!sess) return;
+  const placed = Object.keys(sess.currentPlacements).length;
+  const maxPlace = Math.min(sess.currentGameFighters.length, 4);
   if (placed >= maxPlace) {
     selectFirstHit(fid);
   } else {
@@ -2100,36 +2142,47 @@ function handleGameFighterClick(fid) {
 }
 
 function assignPlacement(fid) {
-  if (state.currentPlacements[fid]) return;
-  const placed = Object.keys(state.currentPlacements).length;
-  const maxPlace = Math.min(state.currentGameFighters.length, 4);
+  const sess = state.session;
+  if (!sess) return;
+  if (sess.currentPlacements[fid]) return;
+  const placed = Object.keys(sess.currentPlacements).length;
+  const maxPlace = Math.min(sess.currentGameFighters.length, 4);
   if (placed >= maxPlace) return;
-  state.currentPlacements[fid] = placed + 1;
+  sess.currentPlacements[fid] = placed + 1;
+  save();
   renderGameArea();
 }
 
 function selectFirstHit(fid) {
-  if (!state.currentGameFighters.find(f => f.id === fid)) return;
-  state.currentFirstHitId = fid;
+  const sess = state.session;
+  if (!sess) return;
+  if (!sess.currentGameFighters.find(f => f.id === fid)) return;
+  sess.currentFirstHitId = fid;
+  save();
   renderGameArea();
 }
 
 function resetPlacements() {
-  state.currentPlacements = {};
-  state.currentFirstHitId = null;
+  const sess = state.session;
+  if (!sess) return;
+  sess.currentPlacements = {};
+  sess.currentFirstHitId = null;
+  save();
   renderGameArea();
 }
 
 function saveGame() {
-  const placements = { ...state.currentPlacements };
-  const fighters = [...state.currentGameFighters];
+  const sess = state.session;
+  if (!sess) return;
+  const placements = { ...sess.currentPlacements };
+  const fighters = [...sess.currentGameFighters];
   const requiredPlacements = Math.min(fighters.length, 4);
 
   if (Object.keys(placements).length < requiredPlacements) {
     toast('בחר דירוג סיום לפני השמירה');
     return;
   }
-  if (!state.currentFirstHitId) {
+  if (!sess.currentFirstHitId) {
     toast('בחר הומו המשחק לפני השמירה');
     return;
   }
@@ -2138,24 +2191,22 @@ function saveGame() {
     id: Date.now(),
     fighters: fighters.map(f => f.id),
     placements,
-    firstHitId: state.currentFirstHitId,
+    firstHitId: sess.currentFirstHitId,
     timestamp: Date.now()
   };
 
-  state.session.games.push(game);
+  sess.games.push(game);
 
-  // Update scores
   Object.entries(placements).forEach(([fid, place]) => {
     const id = parseInt(fid);
-    if (!state.session.scores[id]) state.session.scores[id] = 0;
-    state.session.scores[id] += state.scoring[place] || 0;
+    if (!sess.scores[id]) sess.scores[id] = 0;
+    sess.scores[id] += state.scoring[place] || 0;
   });
 
-  // Reset for next game
-  state.currentGameStarted = false;
-  state.currentPlacements = {};
-  state.currentFirstHitId = null;
-  state.currentGameFighters = [...state.session.fighters];
+  sess.currentGameStarted = false;
+  sess.currentPlacements = {};
+  sess.currentFirstHitId = null;
+  sess.currentGameFighters = [...sess.fighters];
 
   save();
   renderAll();
@@ -2167,7 +2218,7 @@ function renderLeaderboard() {
   const el = document.getElementById('leaderboard');
   const actionsEl = document.getElementById('leaderboard-actions');
   if (actionsEl) {
-    if (state.session && !state.currentGameStarted && state.session.fighters.length >= 2) {
+    if (state.session && !state.session.currentGameStarted && state.session.fighters.length >= 2) {
       actionsEl.innerHTML = `<button class="btn btn-primary btn-sm" onclick="startCurrentGame()">▶️ התחל משחק</button>`;
     } else {
       actionsEl.innerHTML = '';
@@ -2399,13 +2450,6 @@ function renderAll() {
 
 // ==================== INIT ====================
 load();
-if (state.session) {
-  // Restore currentGameFighters from session on reload
-  state.currentGameFighters = [...state.session.fighters];
-  state.currentGameStarted = false;
-  state.currentPlacements = {};
-  state.currentFirstHitId = null;
-}
 renderAll();
 </script>
 </body>
