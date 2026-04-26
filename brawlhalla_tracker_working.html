@@ -1278,6 +1278,92 @@ input:focus {
   100% { transform: scale(1); opacity: 1; }
 }
 
+/* MODE ROLL OVERLAY */
+.mode-roll-overlay {
+  position: fixed; inset: 0; z-index: 200;
+  background: radial-gradient(circle at center, #061428f5, #000d);
+  display: flex; align-items: center; justify-content: center;
+  backdrop-filter: blur(8px);
+  animation: rollFadeIn 0.25s ease-out;
+}
+@keyframes rollFadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes rollFadeOut { from { opacity: 1; } to { opacity: 0; } }
+.mode-roll-overlay.fade-out { animation: rollFadeOut 0.3s ease-in forwards; }
+
+.mode-roll-card {
+  width: min(440px, 92vw);
+  padding: 30px 22px;
+  border-radius: 20px;
+  text-align: center;
+  position: relative;
+}
+.mode-roll-emoji {
+  font-size: 5rem;
+  line-height: 1;
+  margin-bottom: 8px;
+  filter: drop-shadow(0 0 18px currentColor);
+  display: inline-block;
+}
+.mode-roll-name {
+  font-family: 'Cinzel Decorative', serif;
+  font-size: 1.6rem;
+  font-weight: 800;
+  letter-spacing: 1px;
+  margin-top: 6px;
+}
+.mode-roll-desc {
+  margin-top: 10px;
+  font-size: 0.9rem;
+  color: var(--text2);
+}
+.mode-roll-status {
+  font-size: 0.75rem;
+  letter-spacing: 4px;
+  text-transform: uppercase;
+  color: var(--text3);
+  margin-bottom: 14px;
+}
+
+/* Suspense animations */
+@keyframes rollShake {
+  0%,100% { transform: translate(0,0) rotate(0); }
+  20% { transform: translate(-2px,1px) rotate(-0.4deg); }
+  40% { transform: translate(2px,-1px) rotate(0.4deg); }
+  60% { transform: translate(-1px,2px) rotate(-0.2deg); }
+  80% { transform: translate(1px,-2px) rotate(0.2deg); }
+}
+@keyframes rollEmojiSpin {
+  0%   { transform: scale(0.7) rotate(-12deg); opacity: 0; }
+  40%  { transform: scale(1.2) rotate(8deg); opacity: 1; }
+  100% { transform: scale(1) rotate(0); opacity: 1; }
+}
+.mode-roll-card.spinning { animation: rollShake 0.18s linear infinite; }
+.mode-roll-card.spinning .mode-roll-emoji { animation: rollEmojiSpin 0.16s ease-out; }
+
+@keyframes revealBurst {
+  0%   { transform: scale(0.4) rotate(-20deg); opacity: 0; filter: blur(8px); }
+  60%  { transform: scale(1.18) rotate(6deg); opacity: 1; filter: blur(0); }
+  100% { transform: scale(1) rotate(0); opacity: 1; }
+}
+@keyframes revealRing {
+  0%   { box-shadow: 0 0 0 0 currentColor, 0 0 0 0 currentColor inset; opacity: 0.9; }
+  100% { box-shadow: 0 0 0 60px transparent, 0 0 0 0 transparent inset; opacity: 0; }
+}
+.mode-roll-card.revealed { animation: revealBurst 0.7s cubic-bezier(.2,1.4,.4,1) forwards; }
+.mode-roll-ring {
+  position: absolute; inset: 0; border-radius: 20px; pointer-events: none;
+  animation: revealRing 0.9s ease-out forwards;
+}
+
+@keyframes confettiFall {
+  0%   { transform: translateY(-40px) rotate(0); opacity: 1; }
+  100% { transform: translateY(420px) rotate(540deg); opacity: 0; }
+}
+.confetti-piece {
+  position: absolute; top: 0; width: 8px; height: 14px; border-radius: 2px;
+  animation: confettiFall linear forwards;
+}
+
 /* CONFIRM MODAL */
 .confirm-modal-bg {
   position: fixed;
@@ -1905,34 +1991,62 @@ function rollNextMode() {
   const sess = state.session;
   if (!sess || rollInProgress) return;
   rollInProgress = true;
-  const targets = [...SPECIAL_MODE_IDS, 'normal'];
-  const finalMode = targets[Math.floor(Math.random() * targets.length)];
+  const r = Math.random();
+  let finalMode = 'normal';
+  for (let i = 0; i < SPECIAL_MODE_IDS.length; i++) {
+    if (r < (i + 1) * 0.125) { finalMode = SPECIAL_MODE_IDS[i]; break; }
+  }
   const cycle = ['normal', ...SPECIAL_MODE_IDS];
 
-  const el = document.getElementById('mode-display');
-  if (!el) { rollInProgress = false; return; }
+  // Build full-screen overlay
+  const overlay = document.createElement('div');
+  overlay.className = 'mode-roll-overlay';
+  overlay.innerHTML = `
+    <div class="mode-roll-card spinning" id="mode-roll-card">
+      <div class="mode-roll-status" id="mode-roll-status">🎲 מגרילים מוד...</div>
+      <div class="mode-roll-emoji" id="mode-roll-emoji">🎲</div>
+      <div class="mode-roll-name" id="mode-roll-name">—</div>
+      <div class="mode-roll-desc" id="mode-roll-desc">&nbsp;</div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
 
-  const totalDuration = 1800;
+  const card = overlay.querySelector('#mode-roll-card');
+  const emojiEl = overlay.querySelector('#mode-roll-emoji');
+  const nameEl = overlay.querySelector('#mode-roll-name');
+  const descEl = overlay.querySelector('#mode-roll-desc');
+  const statusEl = overlay.querySelector('#mode-roll-status');
+
+  const totalDuration = 3600;
   const start = performance.now();
-  let i = 0;
+  let i = Math.floor(Math.random() * cycle.length);
+
   const tick = () => {
     const elapsed = performance.now() - start;
     const t = Math.min(1, elapsed / totalDuration);
-    // ease-out: slow at end
-    const interval = 60 + 240 * t * t;
+    // Ease-out interval (60ms → ~340ms)
+    const interval = 60 + 280 * t * t;
     const m = GAME_MODES[cycle[i % cycle.length]];
-    el.innerHTML = `
-      <div style="padding:12px;border-radius:10px;border:2px dashed ${m.color};background:${m.color}15;text-align:center;animation:pulse-mode 0.3s;">
-        <div style="font-size:1.6rem;">${m.emoji}</div>
-        <div style="font-size:0.9rem;font-weight:700;color:${m.color};">${m.name}</div>
-        <div style="font-size:0.7rem;color:var(--text3);margin-top:4px;">🎲 מגרילים מוד...</div>
-      </div>
-    `;
+    emojiEl.textContent = m.emoji;
+    nameEl.textContent = m.name;
+    nameEl.style.color = m.color;
+    descEl.textContent = m.desc;
+    descEl.style.color = 'var(--text2)';
+    card.style.color = m.color;
+    // Restart spin keyframe to refresh
+    emojiEl.style.animation = 'none';
+    void emojiEl.offsetWidth;
+    emojiEl.style.animation = '';
+    // Update suspense status text near the end
+    if (t > 0.7) statusEl.textContent = '🎲 ...וההגרלה מסתיימת...';
+    else if (t > 0.4) statusEl.textContent = '🎲 רגע, רגע...';
+    else statusEl.textContent = '🎲 מגרילים מוד...';
+
     i++;
     if (elapsed < totalDuration) {
       setTimeout(tick, interval);
     } else {
-      // settle on final mode
+      // Settle
       sess.currentMode = finalMode;
       sess.currentHuntedId = null;
       sess.currentKnockouts = {};
@@ -1941,22 +2055,50 @@ function rollNextMode() {
         sess.currentHuntedId = fs[Math.floor(Math.random() * fs.length)].id;
       }
       const fm = GAME_MODES[finalMode];
-      el.innerHTML = `
-        <div style="padding:14px;border-radius:10px;border:2px solid ${fm.color};background:${fm.color}25;text-align:center;box-shadow:0 0 20px ${fm.color}60;">
-          <div style="font-size:0.7rem;color:var(--text3);margin-bottom:4px;">🎉 המוד הוגרל!</div>
-          <div style="font-size:2rem;">${fm.emoji}</div>
-          <div style="font-size:1.05rem;font-weight:700;color:${fm.color};">${fm.name}</div>
-          <div style="font-size:0.75rem;color:var(--text);margin-top:6px;">${fm.desc}</div>
-          ${finalMode === 'hunted' && sess.currentHuntedId ? `
-            <div style="margin-top:8px;font-size:0.85rem;font-weight:700;color:#ffb84d;">
-              🎯 הניצוד: ${getAvatar(sess.fighters.find(f => f.id === sess.currentHuntedId))} ${sess.fighters.find(f => f.id === sess.currentHuntedId).name}
-            </div>
-          ` : ''}
-        </div>
-      `;
-      rollInProgress = false;
+      card.classList.remove('spinning');
+      card.classList.add('revealed');
+      card.style.color = fm.color;
+      emojiEl.textContent = fm.emoji;
+      emojiEl.style.fontSize = '7rem';
+      nameEl.textContent = fm.name;
+      nameEl.style.color = fm.color;
+      descEl.textContent = fm.desc;
+      statusEl.textContent = '🎉 המוד הוגרל!';
+      statusEl.style.color = fm.color;
+
+      // Reveal ring + confetti
+      const ring = document.createElement('div');
+      ring.className = 'mode-roll-ring';
+      card.appendChild(ring);
+      for (let k = 0; k < 24; k++) {
+        const piece = document.createElement('div');
+        piece.className = 'confetti-piece';
+        piece.style.left = (5 + Math.random() * 90) + '%';
+        piece.style.background = ['#ff5ac8','#ffb84d','#ffd700','#7a4dff','#40e0c8'][k % 5];
+        piece.style.animationDuration = (1 + Math.random() * 1.2) + 's';
+        piece.style.animationDelay = (Math.random() * 0.4) + 's';
+        card.appendChild(piece);
+      }
+
+      if (finalMode === 'hunted' && sess.currentHuntedId) {
+        const hunted = sess.fighters.find(f => f.id === sess.currentHuntedId);
+        const huntedEl = document.createElement('div');
+        huntedEl.style.cssText = 'margin-top:14px;font-size:1rem;font-weight:800;color:#ffb84d;';
+        huntedEl.innerHTML = `🎯 הניצוד: ${getAvatar(hunted)} ${hunted.name}`;
+        card.appendChild(huntedEl);
+      }
+
       save();
-      renderAll();
+
+      // Hold the result on screen, then dismiss
+      setTimeout(() => {
+        overlay.classList.add('fade-out');
+        setTimeout(() => {
+          overlay.remove();
+          rollInProgress = false;
+          renderAll();
+        }, 320);
+      }, 1900);
     }
   };
   tick();
