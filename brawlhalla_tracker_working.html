@@ -587,7 +587,28 @@ input:focus {
 }
 
 /* GAME PANEL */
-.game-panel { }
+.game-panel { transition: box-shadow 0.4s, border-color 0.4s, background 0.4s; }
+.game-panel.live {
+  border: 2px solid var(--cyan);
+  background: linear-gradient(180deg, #061428 0%, #082040 100%);
+  box-shadow: 0 0 0 2px #40e0c830, 0 0 28px #40e0c850, 0 12px 40px #0008;
+  position: relative;
+}
+.game-panel.live::before {
+  content: '';
+  position: absolute; inset: -2px; border-radius: inherit; pointer-events: none;
+  background: linear-gradient(120deg, transparent 30%, #40e0c815 50%, transparent 70%);
+  background-size: 200% 100%;
+  animation: liveSweep 3.5s linear infinite;
+}
+@keyframes liveSweep {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+.game-panel.live .panel-title {
+  color: var(--cyan);
+  text-shadow: 0 0 8px #40e0c860;
+}
 
 .session-status {
   display: flex;
@@ -1579,15 +1600,15 @@ input:focus {
         <div id="leaderboard" class="leaderboard"></div>
       </div>
 
+      <!-- HOMO INDEX -->
+      <div class="panel">
+        <div class="panel-title" style="color:#ff8cda">💖 מדד ההומואים</div>
+        <div id="leaderboard-homo"></div>
+      </div>
+
       <!-- GAME PANEL -->
       <div class="panel game-panel" id="center-panel">
         <div id="game-area"></div>
-      </div>
-
-      <!-- FIRST HIT LEADERBOARD -->
-      <div class="panel">
-        <div class="panel-title" style="color:#ff8cda">💖 מדד ההומואים</div>
-        <div id="first-hit-leaderboard" class="leaderboard"></div>
       </div>
 
       <!-- GAME HISTORY -->
@@ -1969,7 +1990,7 @@ function saveScoring() {
     state.scoring[n] = isNaN(v) ? 0 : v;
   });
   save();
-  toast('הגדרות האגוזים נשמרו! ${W}');
+  toast(`הגדרות האגוזים נשמרו! ${W}`);
 }
 
 // ==================== GAME MODES ====================
@@ -2287,20 +2308,7 @@ function renderSessionControl() {
   Object.values(firstHitCounts).forEach(c => { if (c > maxHits) maxHits = c; });
   const topHomos = sess.fighters.filter(f => firstHitCounts[f.id] === maxHits && maxHits > 0);
 
-  let homoBadge = '';
-  if (topHomos.length > 0) {
-    const chart = homoCandleChart(sess.fighters, firstHitCounts);
-    homoBadge = `
-      <div style="margin-top:10px; padding:10px; border:1px solid #ff5ac860; border-radius:8px; background:#ff5ac815; display:flex; align-items:center; gap:10px;">
-        <div style="font-size:1.8rem; filter:drop-shadow(0 0 6px #ff5ac8)">💖</div>
-        <div style="flex:1; min-width:0;">
-          <div style="font-size:0.75rem; color:#ffb8e8; font-weight:bold; font-family:'Cinzel', serif;">הומו ההומאים הנוכחי</div>
-          <div style="font-size:0.9rem; font-weight:bold; color:var(--text);">${topHomos.map(f => getAvatar(f) + ' ' + f.name).join(', ')} (${maxHits} מכות)</div>
-        </div>
-        ${chart}
-      </div>
-    `;
-  }
+  // Homo badge moved to leaderboard panel (renderLeaderboard handles it)
 
   // Interactive mode toggle
   let interactiveBlock = '';
@@ -2324,7 +2332,6 @@ function renderSessionControl() {
     <div style="margin-bottom:10px;">
       <div class="session-time">התחיל: ${start} | ${games} משחקים</div>
     </div>
-    ${homoBadge}
     ${interactiveBlock}
   `;
   if (endPanel && endArea) {
@@ -2390,7 +2397,7 @@ function confirmSessionStart() {
   closeSessionOverlay();
   save();
   renderAll();
-  toast('סשן חדש התחיל! ⚔️${W}');
+  toast(`סשן חדש התחיל! ⚔️${W}`);
 }
 
 function archiveCurrentSession() {
@@ -2414,6 +2421,8 @@ function endSession() {
 // ==================== GAME AREA ====================
 function renderGameArea() {
   const el = document.getElementById('game-area');
+  const panel = document.getElementById('center-panel');
+  if (panel) panel.classList.toggle('live', !!(state.session && state.session.currentGameStarted));
   if (!state.session) {
     el.innerHTML = `
       <div class="no-session-panel">
@@ -2553,7 +2562,10 @@ function renderGameArea() {
             ${curModeDef.emoji} ${heading}
           </div>
           <div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;">
-            ${(curMode === 'underdog' && trackedFighter ? [trackedFighter] : sess.currentGameFighters).map(f => {
+            ${(curMode === 'underdog' && trackedFighter
+                ? [trackedFighter]
+                : sess.currentGameFighters.filter(f => !(['kingslayer','palestine','hunted'].includes(curMode) && f.id === trackedId))
+              ).map(f => {
               const c = (sess.currentKnockouts || {})[f.id] || 0;
               return `
                 <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:8px;background:var(--bg2);border:1px solid var(--border);">
@@ -2595,6 +2607,9 @@ function startCurrentGame() {
   sess.currentHuntedId = null;
   save();
   renderAll();
+  // Scroll the active game panel into view so it's clear focus has shifted
+  const panel = document.getElementById('center-panel');
+  if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'center' });
   if (sess.interactiveMode) {
     // small delay so the user sees the game area before the spin starts
     setTimeout(() => rollNextMode(), 150);
@@ -2723,13 +2738,14 @@ function finalizeSaveGame() {
 
   save();
   renderAll();
-  toast('משחק נשמר! ${W}');
+  toast(`משחק נשמר! ${W}`);
 }
 
 // ==================== LEADERBOARD ====================
 function renderLeaderboard() {
   const el = document.getElementById('leaderboard');
   const actionsEl = document.getElementById('leaderboard-actions');
+  const homoEl = document.getElementById('leaderboard-homo');
   if (actionsEl) {
     if (state.session && !state.session.currentGameStarted && state.session.fighters.length >= 2) {
       actionsEl.innerHTML = `<button class="btn btn-primary btn-sm" onclick="startCurrentGame()">▶️ התחל משחק</button>`;
@@ -2737,9 +2753,35 @@ function renderLeaderboard() {
       actionsEl.innerHTML = '';
     }
   }
+  if (homoEl) homoEl.innerHTML = '';
   if (!state.session) {
     el.innerHTML = `<div class="no-session-msg" style="font-size:0.8rem">התחל סשן כדי לראות דירוג</div>`;
     return;
+  }
+
+  // Current homo badge
+  if (homoEl) {
+    const sessForHomo = state.session;
+    const fhCounts = {};
+    sessForHomo.games.forEach(g => {
+      if (g.firstHitId) fhCounts[g.firstHitId] = (fhCounts[g.firstHitId] || 0) + 1;
+    });
+    let maxFH = 0;
+    Object.values(fhCounts).forEach(c => { if (c > maxFH) maxFH = c; });
+    const tops = sessForHomo.fighters.filter(f => fhCounts[f.id] === maxFH && maxFH > 0);
+    if (tops.length > 0) {
+      const chart = homoCandleChart(sessForHomo.fighters, fhCounts);
+      homoEl.innerHTML = `
+        <div style="margin-bottom:10px; padding:10px; border:1px solid #ff5ac860; border-radius:8px; background:#ff5ac815; display:flex; align-items:center; gap:10px;">
+          <div style="font-size:1.8rem; filter:drop-shadow(0 0 6px #ff5ac8)">💖</div>
+          <div style="flex:1; min-width:0;">
+            <div style="font-size:0.75rem; color:#ffb8e8; font-weight:bold; font-family:'Cinzel', serif;">הומו ההומאים הנוכחי</div>
+            <div style="font-size:0.9rem; font-weight:bold; color:var(--text);">${tops.map(f => getAvatar(f) + ' ' + f.name).join(', ')} (${maxFH} מכות)</div>
+          </div>
+          ${chart}
+        </div>
+      `;
+    }
   }
 
   const fighters = state.session.fighters.map(f => ({
@@ -2850,20 +2892,28 @@ function renderGameHistory() {
   el.innerHTML = [...state.session.games].reverse().map((game, i) => {
     const num = state.session.games.length - i;
     const sortedPlacements = Object.entries(game.placements).sort((a, b) => a[1] - b[1]);
+    const ko = game.knockouts || {};
     const chips = sortedPlacements.map(([fid, place]) => {
       const f = state.session.fighters.find(x => x.id === parseInt(fid));
       if (!f) return '';
-      return `<span class="place-chip chip-${place}">${place}. ${getAvatar(f)} ${f.name}</span>`;
+      const koCount = ko[f.id] || 0;
+      const koTag = koCount > 0
+        ? ` <span style="color:#ffb84d;font-weight:700;">+${koCount}🥊</span>`
+        : '';
+      return `<span class="place-chip chip-${place}">${place}. ${getAvatar(f)} ${f.name}${koTag}</span>`;
     }).join('');
     const firstHit = game.firstHitId ? state.session.fighters.find(x => x.id === parseInt(game.firstHitId)) : null;
     const firstHitChip = firstHit
       ? `<span class="first-hit-chip">הומו: ${getAvatar(firstHit)} ${firstHit.name}</span>`
       : '';
+    const mode = game.mode || 'normal';
+    const md = GAME_MODES[mode] || GAME_MODES.normal;
+    const modeChip = `<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:10px;font-size:0.72rem;font-weight:700;background:${md.color}20;color:${md.color};border:1px solid ${md.color}60;">${md.emoji} ${md.name}</span>`;
 
     return `
-      <div class="game-hist-item">
+      <div class="game-hist-item" style="border-left:3px solid ${md.color};">
         <div class="gh-header">
-          <span>משחק #${num}</span>
+          <span>משחק #${num} ${modeChip}</span>
           <span>${fmtTime(game.timestamp)}</span>
         </div>
         <div class="game-hist-placements">${chips}${firstHitChip}</div>
