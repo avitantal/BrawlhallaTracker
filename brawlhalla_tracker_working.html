@@ -1428,7 +1428,10 @@ input:focus {
 
       <!-- SESSION CONTROL -->
       <div class="panel" id="session-panel-wrap">
-        <div class="panel-title">⚔️ שליטה בסשן</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;">
+          <div class="panel-title" style="margin-bottom:0;">⚔️ שליטה בסשן</div>
+          <div id="session-control-actions"></div>
+        </div>
         <div id="session-control-area"></div>
       </div>
 
@@ -1859,37 +1862,44 @@ function renderSessionControl() {
   const endPanel = document.getElementById('session-end-panel');
   const endArea = document.getElementById('session-end-area');
 
+  const legend = state.sessions.length > 1 ? `
+    <div style="display:flex;gap:12px;margin-bottom:8px;font-size:0.7rem;color:var(--text3);">
+      <span>🟢 פעיל</span>
+      <span style="color:#fff;">⚪ לא פעיל</span>
+    </div>
+  ` : '';
+
   const sessionsList = state.sessions.length ? `
-    <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px;">
+    ${legend}
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">
       ${state.sessions.map(s => {
         const isActive = s.id === state.activeSessionId;
-        const fightersPreview = s.fighters.slice(0, 4).map(f => getAvatar(f)).join('');
+        const fightersPreview = s.fighters.map(f => getAvatar(f)).join('');
+        const namesList = s.fighters.map(f => f.name).join(', ');
+        const tip = `סשן ${fmtTime(s.startTime)} · ${s.games.length} משחקים\nמשתתפים: ${namesList}`;
         return `
-          <div onclick="switchSession(${s.id})"
-            style="cursor:pointer;padding:8px 10px;border-radius:8px;display:flex;align-items:center;gap:8px;
-                   border:1px solid ${isActive ? '#40e0c8' : 'var(--border)'};
-                   background:${isActive ? '#40e0c818' : 'transparent'};
-                   font-size:0.82rem;">
-            <div style="font-size:1rem;">${isActive ? '🟢' : '⚪'}</div>
-            <div style="flex:1;min-width:0;">
-              <div style="font-weight:700;color:var(--text);">סשן ${fmtTime(s.startTime)} · ${s.games.length} משחקים</div>
-              <div style="font-size:0.95rem;letter-spacing:1px;">${fightersPreview}${s.fighters.length > 4 ? '…' : ''}</div>
-            </div>
-          </div>
+          <span onclick="switchSession(${s.id})" title="${tip.replace(/"/g, '&quot;')}"
+            style="cursor:pointer;font-size:0.72rem;font-weight:600;padding:3px 9px;border-radius:20px;display:inline-flex;align-items:center;gap:5px;max-width:100%;flex-wrap:wrap;
+                   background:${isActive ? '#40e0c820' : 'transparent'};
+                   border:1px solid ${isActive ? '#40e0c860' : 'var(--border)'};
+                   color:${isActive ? 'var(--cyan)' : '#fff'};">
+            <span>${isActive ? '🟢' : '⚪'}</span>
+            <span style="letter-spacing:1px;word-break:break-all;">${fightersPreview}</span>
+            <span style="opacity:0.7;white-space:nowrap;">${s.games.length}🎮</span>
+          </span>
         `;
       }).join('')}
     </div>
   ` : '';
 
-  const startBtn = `
-    <button class="btn btn-primary btn-sm" style="width:100%" onclick="openSessionOverlay()">🎮 התחל סשן חדש</button>
-  `;
+  const startBtn = `<button class="btn btn-primary btn-sm" onclick="openSessionOverlay()">🎮 התחל סשן חדש</button>`;
+  const actionsEl = document.getElementById('session-control-actions');
+  if (actionsEl) actionsEl.innerHTML = startBtn;
 
   if (!state.session) {
     el.innerHTML = `
       <div class="session-control">
         ${state.sessions.length ? sessionsList : '<div class="no-session-msg">לא קיים סשן פעיל כרגע</div>'}
-        ${startBtn}
       </div>
     `;
     if (endPanel && endArea) {
@@ -1929,11 +1939,9 @@ function renderSessionControl() {
   el.innerHTML = `
     ${sessionsList}
     <div style="margin-bottom:10px;">
-      <div class="session-badge" style="display:inline-block;margin-bottom:6px;">🟢 סשן פעיל</div>
       <div class="session-time">התחיל: ${start} | ${games} משחקים</div>
     </div>
     ${homoBadge}
-    <div style="margin-top:10px;">${startBtn}</div>
   `;
   if (endPanel && endArea) {
     endPanel.classList.remove('hidden');
