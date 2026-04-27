@@ -1778,12 +1778,15 @@ input:focus {
     <div style="font-size:0.78rem;color:var(--text2);text-transform:uppercase;letter-spacing:2px;margin-bottom:8px;">אסטרטגיה</div>
     <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:18px;font-size:0.9rem;color:var(--text);">
       <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
-        <input type="radio" name="strategy-edit" value="random" /> 🎲 רנדומלי
+        <input type="radio" name="strategy-edit" value="random" onchange="updateModesEditSummary()" /> 🎲 רנדומלי
       </label>
       <label style="display:flex;align-items:center;gap:8px;cursor:pointer;flex-wrap:wrap;">
-        <input type="radio" name="strategy-edit" value="pattern" /> 📋 מסודר — כל
+        <input type="radio" name="strategy-edit" value="pattern" onchange="updateModesEditSummary()" /> 📋 מסודר — כל
         <input type="number" id="strategy-edit-every" min="2" value="3" style="width:60px;text-align:center;" />
         משחקים, אחד מיוחד
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+        <input type="radio" name="strategy-edit" value="none" onchange="updateModesEditSummary()" /> ⚔️ ללא מודים מיוחדים — תמיד משחק רגיל
       </label>
     </div>
     <div style="font-size:0.78rem;color:var(--text2);text-transform:uppercase;letter-spacing:2px;margin-bottom:8px;">מודים מיוחדים פעילים</div>
@@ -1867,7 +1870,7 @@ function ensureSessionDefaults(s) {
   if (typeof s.currentPairWinnerIdx === 'undefined') s.currentPairWinnerIdx = null;
   if (!s.currentKnockouts) s.currentKnockouts = {};
   if (!Array.isArray(s.enabledModes)) s.enabledModes = [...SPECIAL_MODE_IDS];
-  if (s.modeStrategy !== 'pattern' && s.modeStrategy !== 'random') s.modeStrategy = 'random';
+  if (!['pattern', 'random', 'none'].includes(s.modeStrategy)) s.modeStrategy = 'random';
   if (typeof s.modePatternEvery !== 'number' || s.modePatternEvery < 2) s.modePatternEvery = 3;
   return s;
 }
@@ -2507,17 +2510,23 @@ function checkRemoteRoll(opts = {}) {
 function rollNextMode() {
   const sess = state.session;
   if (!sess || rollInProgress) return;
-  rollInProgress = true;
   const eligible = getEligibleSpecialModes(sess);
   let finalMode = 'normal';
-  if (sess.modeStrategy === 'pattern') {
+  let skipAnimation = false;
+  if (sess.modeStrategy === 'none' || !eligible.length) {
+    finalMode = 'normal';
+    skipAnimation = true;
+  } else if (sess.modeStrategy === 'pattern') {
     const upcomingGameNum = sess.games.length + 1;
     const every = Math.max(2, sess.modePatternEvery || 3);
-    if (upcomingGameNum % every === 0 && eligible.length) {
+    if (upcomingGameNum % every === 0) {
       finalMode = eligible[Math.floor(Math.random() * eligible.length)];
+    } else {
+      finalMode = 'normal';
+      skipAnimation = true;
     }
-  } else if (eligible.length) {
-    // 40% normal, remaining 60% split equally among eligible specials
+  } else {
+    // random: 40% normal, remaining 60% split equally among eligible specials
     const r = Math.random();
     if (r >= 0.4) {
       const slice = 0.6 / eligible.length;
@@ -2525,6 +2534,20 @@ function rollNextMode() {
       finalMode = eligible[idx];
     }
   }
+
+  if (skipAnimation) {
+    sess.currentMode = 'normal';
+    sess.currentHuntedId = null;
+    sess.currentPairs = null;
+    sess.currentKnockouts = {};
+    sess.lastRollId = `${CLIENT_ID}-${Date.now()}`;
+    lastSeenRollIds[sess.id] = sess.lastRollId;
+    save();
+    renderAll();
+    return;
+  }
+
+  rollInProgress = true;
   const cycle = ['normal', ...eligible];
 
   // Build full-screen overlay
@@ -2744,11 +2767,22 @@ function updateModesEditSummary() {
   if (!sess) return;
   const sumEl = document.getElementById('modes-edit-summary');
   if (!sumEl) return;
+  const strategyEl = document.querySelector('input[name="strategy-edit"]:checked');
+  const strategy = strategyEl ? strategyEl.value : 'random';
+  if (strategy === 'none') {
+    sumEl.innerHTML = `⚔️ כל המשחקים יהיו רגילים, אין הגרלות.`;
+    return;
+  }
   const checks = [...document.querySelectorAll('#modes-edit-list input[type="checkbox"]:checked')]
     .map(c => c.dataset.mode);
   const eligibleNow = checks.filter(id => !(id === 'pairs' && sess.fighters.length !== 4));
   if (!eligibleNow.length) {
     sumEl.innerHTML = `⚠️ אין מודים מיוחדים פעילים — כל המשחקים יהיו רגילים.`;
+    return;
+  }
+  if (strategy === 'pattern') {
+    const every = Math.max(2, parseInt(document.getElementById('strategy-edit-every').value) || 3);
+    sumEl.innerHTML = `📋 מסודר: כל משחק ה־${every} יהיה מיוחד (יוגרל מ־${eligibleNow.length} מודים פעילים).`;
     return;
   }
   const each = (60 / eligibleNow.length).toFixed(1).replace(/\.0$/, '');
@@ -2879,9 +2913,14 @@ function renderSessionControl() {
   // Interactive mode toggle + strategy
   let interactiveBlock = '';
   if (sess.interactiveMode) {
-    const strategyText = sess.modeStrategy === 'pattern'
-      ? `📋 מסודר · משחק מיוחד כל ${sess.modePatternEvery} משחקים`
-      : `🎲 רנדומלי · 12.5% לכל מוד מיוחד`;
+    let strategyText;
+    if (sess.modeStrategy === 'pattern') {
+      strategyText = `📋 מסודר · משחק מיוחד כל ${sess.modePatternEvery} משחקים`;
+    } else if (sess.modeStrategy === 'none') {
+      strategyText = `⚔️ ללא מודים מיוחדים`;
+    } else {
+      strategyText = `🎲 רנדומלי · 12.5% לכל מוד מיוחד`;
+    }
     interactiveBlock = `
       <div style="margin-top:10px;padding:8px 10px;border-radius:8px;border:1px solid #ff5ac860;background:#ff5ac815;display:flex;flex-direction:column;gap:6px;">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
