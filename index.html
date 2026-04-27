@@ -1619,7 +1619,7 @@ input:focus {
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
-<div id="ephemeral-banner" style="display:none;position:sticky;top:0;z-index:9999;background:linear-gradient(90deg,#ff3a3a,#ffb84d,#ff3a3a);color:#000;font-weight:800;text-align:center;padding:6px 12px;font-size:0.85rem;letter-spacing:1px;border-bottom:2px solid #000;">🧪 מצב בדיקות — שינויים לא נשמרים, רענון = איפוס</div>
+<div id="ephemeral-banner" style="display:none;position:sticky;top:0;z-index:9999;background:linear-gradient(90deg,#ff3a3a,#ffb84d,#ff3a3a);color:#000;font-weight:800;text-align:center;padding:6px 12px;font-size:0.85rem;letter-spacing:1px;border-bottom:2px solid #000;">🧪 מצב בדיקות — נשמר בטבלת בדיקות נפרדת, לא בדאטה האמיתי</div>
 <div id="app">
 <!-- Cyan flame orbs like Brawlhalla spirit fire -->
 <div class="flame-orb" style="width:400px;height:400px;background:#40e0c8;top:-100px;left:-100px;animation-delay:0s"></div>
@@ -1858,13 +1858,17 @@ function switchTab(tab) {
 const SUPABASE_URL = 'https://btthehystdtdujnihrub.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_gptwS7DYH7eL8qO9WibLog_9nXxUfq4';
 const SYNC_KEY = 'main';
+const MAIN_SYNC_TABLE = 'kv_store';
+const TEST_SYNC_TABLE = 'kv_store_test';
 const EPHEMERAL = (() => {
   try {
     const p = new URLSearchParams(window.location.search);
     return p.get('test') === '1' || p.get('ephemeral') === '1';
   } catch (e) { return false; }
 })();
-const LOCAL_ONLY = EPHEMERAL;
+const LOCAL_ONLY = false;
+const SYNC_TABLE = EPHEMERAL ? TEST_SYNC_TABLE : MAIN_SYNC_TABLE;
+const SYNC_CHANNEL = `${SYNC_TABLE}_changes`;
 const SYNC_INTERVAL_MS = 15000; // Polling fallback; Realtime handles instant updates
 const REMOTE_SAVE_DEBOUNCE_MS = 450;
 const LOCAL_DIRTY_SYNC_GRACE_MS = 5000;
@@ -1920,6 +1924,11 @@ let localDirty = false;
 let suppressRemoteSyncUntil = 0;
 
 function getOrCreateClientId() {
+  if (EPHEMERAL) {
+    return (window.crypto && window.crypto.randomUUID)
+      ? `test-${window.crypto.randomUUID()}`
+      : `test-client-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  }
   try {
     let id = localStorage.getItem(CLIENT_ID_STORAGE_KEY);
     if (!id) {
@@ -2061,7 +2070,7 @@ async function saveRemoteNow() {
   const body = JSON.stringify(payload);
   try {
     const { error } = await supabaseClient
-      .from('kv_store')
+      .from(SYNC_TABLE)
       .upsert({ key: SYNC_KEY, data: payload, updated_at: new Date().toISOString() });
     if (error) throw error;
     lastRemoteText = body;
@@ -2080,7 +2089,7 @@ async function syncFromRemote({ initial = false } = {}) {
 
   try {
     const { data: row, error } = await supabaseClient
-      .from('kv_store')
+      .from(SYNC_TABLE)
       .select('data')
       .eq('key', SYNC_KEY)
       .maybeSingle();
@@ -2119,9 +2128,9 @@ function startCloudSync() {
   if (!cloudSyncEnabled()) return;
   syncFromRemote({ initial: true });
   supabaseClient
-    .channel('kv_store_changes')
+    .channel(SYNC_CHANNEL)
     .on('postgres_changes',
-      { event: '*', schema: 'public', table: 'kv_store', filter: `key=eq.${SYNC_KEY}` },
+      { event: '*', schema: 'public', table: SYNC_TABLE, filter: `key=eq.${SYNC_KEY}` },
       (payload) => {
         const data = payload.new?.data;
         if (!data) return;
@@ -2371,12 +2380,12 @@ function renderEphemeralPanel() {
   const btnEl = document.getElementById('ephemeral-toggle-btn');
   if (!statusEl || !btnEl) return;
   if (EPHEMERAL) {
-    statusEl.innerHTML = `<b style="color:#ff8a8a;">🧪 פעיל כרגע.</b> שינויים לא נשמרים — רענון רגיל יאפס. הענן ו־localStorage חסומים.`;
+    statusEl.innerHTML = `<b style="color:#ff8a8a;">🧪 פעיל כרגע.</b> שינויים נשמרים בטבלת בדיקות נפרדת (${TEST_SYNC_TABLE}) ומסונכרנים בין מכשירים. הדאטה האמיתי ו־localStorage לא נוגעים בזה.`;
     btnEl.textContent = '⏻ צא ממצב בדיקות';
     btnEl.className = 'btn btn-danger';
     btnEl.style.width = '100%';
   } else {
-    statusEl.innerHTML = `מצב נסיוני שמבודד את האפליקציה: ללא localStorage, ללא ענן, רענון = איפוס. שימושי לבדוק מודים/הגרלות בלי "ללכלך" את הסשנים שלך.`;
+    statusEl.innerHTML = `מצב נסיוני שמבודד את האפליקציה: ללא localStorage, עם סנכרון לענן דרך טבלת בדיקות נפרדת. שימושי לבדוק מודים/הגרלות בלי "ללכלך" את הסשנים האמיתיים.`;
     btnEl.textContent = '🧪 הפעל מצב בדיקות (ייטען מחדש)';
     btnEl.className = 'btn btn-primary';
     btnEl.style.width = '100%';

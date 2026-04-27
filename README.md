@@ -9,7 +9,7 @@
 - **מדד ההומואים** — לוח ייעודי וגרף נרות צבעוני.
 - **סנכרון ענן בזמן אמת** דרך Supabase Realtime (פולינג של 15ש' כגיבוי).
 - **חשיפת רול במכשירים מרוחקים** — overlay + toast + גלילה אוטומטית.
-- **🧪 מצב בדיקות** — מופעל מתוך לשונית ⚙️ הגדרות (כפתור "🧪 הפעל מצב בדיקות") או ידנית עם `?test=1` ב־URL. ללא localStorage, ללא ענן, רענון = איפוס. באנר אדום־כתום מוצג למעלה.
+- **🧪 מצב בדיקות** — מופעל מתוך לשונית ⚙️ הגדרות (כפתור "🧪 הפעל מצב בדיקות") או ידנית עם `?test=1` ב־URL. ללא localStorage, עם סנכרון ענן לטבלת בדיקות נפרדת (`kv_store_test`). באנר אדום־כתום מוצג למעלה.
 
 ## 🎲 מודים אינטראקטיביים
 
@@ -42,11 +42,12 @@
 **אחסון ומצב:**
 - `localStorage` לכל המצב המקומי (לוחמים, סשנים פעילים, ארכיון).
 - שכבת `LOCAL_ONLY` לעבודה אופליין מלאה.
-- מצב `EPHEMERAL` (URL `?test=1`) מבטל גם localStorage וגם ענן — `saveLocal`/`loadLocal` עושים early-return והדגל מקפיץ את `LOCAL_ONLY` כך ש־`cloudSyncEnabled()` חוסם כל קריאת/כתיבת ענן.
+- מצב `EPHEMERAL`/בדיקות (URL `?test=1`) מבטל localStorage בלבד — `saveLocal`/`loadLocal` עושים early-return, אבל Supabase נשאר פעיל מול `kv_store_test` כדי לסנכרן בדיקות בלי לגעת בדאטה האמיתי.
 - מיגרציות מצב inline (ברירות מחדל ל־`currentPairs`, `modeStrategy`, `modePatternEvery`).
 
 **סנכרון ענן (Supabase):**
-- טבלה אחת עם state JSON, `upsert` בכל שינוי מקומי.
+- טבלת state JSON עם `upsert` בכל שינוי מקומי: `kv_store` במצב רגיל, `kv_store_test` במצב בדיקות.
+- `kv_store_test` צריכה אותו מבנה והרשאות Realtime כמו `kv_store`.
 - `Realtime` channel ל־postgres_changes → פוש מיידי בין מכשירים.
 - פולינג fallback כל 15 שניות.
 - חשיפת רול מרחוק: זיהוי `currentMode` חדש → הפעלת overlay + toast + scroll גם במכשיר שלא הגריל.
