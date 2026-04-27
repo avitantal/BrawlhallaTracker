@@ -2066,6 +2066,7 @@ async function syncFromRemote({ initial = false } = {}) {
     applyRemoteState(data);
     localDirty = false;
     renderAll();
+    checkRemoteRoll();
   } catch(e) {
     console.warn('remote sync failed', e);
   }
@@ -2095,6 +2096,7 @@ function startCloudSync() {
         applyRemoteState(data);
         localDirty = false;
         renderAll();
+        checkRemoteRoll();
       }
     )
     .subscribe();
@@ -2392,6 +2394,92 @@ function computeModeBonus(sess, game) {
 
 // ==================== MODE ROLL ====================
 let rollInProgress = false;
+let lastSeenRollIds = {}; // sessionId -> lastRollId, populated on first sight to avoid replays on load
+
+function showRemoteRollReveal(sess) {
+  if (!sess || rollInProgress) return;
+  const finalMode = sess.currentMode || 'normal';
+  const fm = GAME_MODES[finalMode];
+  if (!fm) return;
+
+  const overlay = document.createElement('div');
+  overlay.className = 'mode-roll-overlay';
+  overlay.innerHTML = `
+    <div class="mode-roll-card revealed" style="color:${fm.color}">
+      <div class="mode-roll-status" style="color:${fm.color}">📡 הוגרל ממכשיר אחר</div>
+      <div class="mode-roll-emoji" style="font-size:7rem">${fm.emoji}</div>
+      <div class="mode-roll-name" style="color:${fm.color}">${fm.name}</div>
+      <div class="mode-roll-desc">${fm.desc}</div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  const card = overlay.querySelector('.mode-roll-card');
+  const ring = document.createElement('div');
+  ring.className = 'mode-roll-ring';
+  card.appendChild(ring);
+
+  const dismiss = () => {
+    overlay.classList.add('fade-out');
+    setTimeout(() => overlay.remove(), 320);
+  };
+
+  if (finalMode === 'hunted' && sess.currentHuntedId) {
+    setTimeout(() => {
+      const hunted = sess.fighters.find(f => f.id === sess.currentHuntedId);
+      if (!hunted) { dismiss(); return; }
+      const huntedLayer = document.createElement('div');
+      huntedLayer.className = 'hunted-reveal';
+      huntedLayer.innerHTML = `
+        <div class="hunted-reveal-card">
+          <div class="hunted-reveal-status">🎯 הניצוד הוא...</div>
+          <div class="hunted-reveal-avatar">${getAvatar(hunted)}</div>
+          <div class="hunted-reveal-name">${hunted.name}</div>
+        </div>
+      `;
+      overlay.appendChild(huntedLayer);
+      setTimeout(dismiss, 2400);
+    }, 1800);
+  } else if (finalMode === 'pairs' && sess.currentPairs) {
+    setTimeout(() => {
+      const [[a, b], [c, d]] = sess.currentPairs.map(p => p.map(id => sess.fighters.find(f => f.id === id)));
+      if (!a || !b || !c || !d) { dismiss(); return; }
+      const pairsLayer = document.createElement('div');
+      pairsLayer.className = 'pairs-reveal';
+      pairsLayer.innerHTML = `
+        <div class="pairs-reveal-card">
+          <div class="pairs-reveal-status">🤝 הזוגות הם...</div>
+          <div class="pairs-reveal-row">
+            <div class="pair-block delay-a">
+              <div class="pair-avatars">${getAvatar(a)}<span class="pair-amp">&amp;</span>${getAvatar(b)}</div>
+              <div class="pair-names">${a.name} & ${b.name}</div>
+            </div>
+            <div class="pair-block delay-b">
+              <div class="pair-avatars">${getAvatar(c)}<span class="pair-amp">&amp;</span>${getAvatar(d)}</div>
+              <div class="pair-names">${c.name} & ${d.name}</div>
+            </div>
+          </div>
+        </div>
+      `;
+      overlay.appendChild(pairsLayer);
+      setTimeout(dismiss, 2400);
+    }, 1800);
+  } else {
+    setTimeout(dismiss, 2200);
+  }
+}
+
+function checkRemoteRoll() {
+  const sess = state.session;
+  if (!sess) return;
+  const rid = sess.lastRollId;
+  if (!rid) return;
+  const seen = lastSeenRollIds[sess.id];
+  lastSeenRollIds[sess.id] = rid;
+  if (seen === undefined || seen === rid) return; // first sight on load OR same roll
+  if (rid.startsWith(CLIENT_ID + '-')) return; // it's our own roll
+  showRemoteRollReveal(sess);
+}
+
 function rollNextMode() {
   const sess = state.session;
   if (!sess || rollInProgress) return;
@@ -2508,6 +2596,8 @@ function rollNextMode() {
         card.appendChild(piece);
       }
 
+      sess.lastRollId = `${CLIENT_ID}-${Date.now()}`;
+      lastSeenRollIds[sess.id] = sess.lastRollId;
       save();
 
       const dismiss = () => {
