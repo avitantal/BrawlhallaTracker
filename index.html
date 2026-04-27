@@ -1616,6 +1616,7 @@ input:focus {
   height: 1rem;
 }
 </style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
 <div id="app">
@@ -1823,13 +1824,18 @@ function switchTab(tab) {
 }
 
 // ==================== CLOUD SYNC CONFIG ====================
-const NPOINT_URL = 'https://api.npoint.io/b7275d2b6667ef000f12'; // Paste your https://api.npoint.io/... URL here to enable sync
-const NPOINT_TOKEN = ''; // Optional npoint token, if configured
+const SUPABASE_URL = 'https://btthehystdtdujnihrub.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_gptwS7DYH7eL8qO9WibLog_9nXxUfq4';
+const SYNC_KEY = 'main';
 const LOCAL_ONLY = false;
-const SYNC_INTERVAL_MS = 2500;
+const SYNC_INTERVAL_MS = 15000; // Polling fallback; Realtime handles instant updates
 const REMOTE_SAVE_DEBOUNCE_MS = 450;
 const LOCAL_DIRTY_SYNC_GRACE_MS = 5000;
 const CLIENT_ID_STORAGE_KEY = 'brawl_sync_client_id';
+
+const supabaseClient = (window.supabase && SUPABASE_URL && SUPABASE_ANON_KEY)
+  ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+  : null;
 
 const CLIENT_ID = getOrCreateClientId();
 
@@ -1888,7 +1894,7 @@ function getOrCreateClientId() {
 }
 
 function cloudSyncEnabled() {
-  return !LOCAL_ONLY && Boolean(NPOINT_URL);
+  return !LOCAL_ONLY && Boolean(supabaseClient);
 }
 
 function isPlainObject(value) {
@@ -2011,15 +2017,10 @@ async function saveRemoteNow() {
   const payload = getPersistedState();
   const body = JSON.stringify(payload);
   try {
-    const res = await fetch(NPOINT_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(NPOINT_TOKEN ? { 'Token': NPOINT_TOKEN } : {})
-      },
-      body
-    });
-    if (!res.ok) throw new Error(`remote save failed: ${res.status}`);
+    const { error } = await supabaseClient
+      .from('kv_store')
+      .upsert({ key: SYNC_KEY, data: payload, updated_at: new Date().toISOString() });
+    if (error) throw error;
     lastRemoteText = body;
     if (state.meta?.updatedAt === payload.meta?.updatedAt) localDirty = false;
   } catch(e) {
@@ -2035,14 +2036,19 @@ async function syncFromRemote({ initial = false } = {}) {
   if (localDirty && Date.now() < suppressRemoteSyncUntil) return;
 
   try {
-    const res = await fetch(NPOINT_URL, {
-      headers: NPOINT_TOKEN ? { 'Token': NPOINT_TOKEN } : {}
-    });
-    if (!res.ok) throw new Error(`remote load failed: ${res.status}`);
-    const text = await res.text();
+    const { data: row, error } = await supabaseClient
+      .from('kv_store')
+      .select('data')
+      .eq('key', SYNC_KEY)
+      .maybeSingle();
+    if (error) throw error;
+    if (!row) {
+      if (initial && hasMeaningfulState(state)) queueRemoteSave({ immediate: true });
+      return;
+    }
+    const data = row.data;
+    const text = JSON.stringify(data);
     if (!text || text === lastRemoteText) return;
-
-    const data = JSON.parse(text);
     const remoteUpdatedAt = data.meta?.updatedAt || 0;
     const localUpdatedAt = state.meta?.updatedAt || 0;
 
@@ -2068,6 +2074,30 @@ async function syncFromRemote({ initial = false } = {}) {
 function startCloudSync() {
   if (!cloudSyncEnabled()) return;
   syncFromRemote({ initial: true });
+  supabaseClient
+    .channel('kv_store_changes')
+    .on('postgres_changes',
+      { event: '*', schema: 'public', table: 'kv_store', filter: `key=eq.${SYNC_KEY}` },
+      (payload) => {
+        const data = payload.new?.data;
+        if (!data) return;
+        if (rollInProgress || remoteSaveInFlight) return;
+        if (localDirty && Date.now() < suppressRemoteSyncUntil) return;
+        const text = JSON.stringify(data);
+        if (text === lastRemoteText) return;
+        const remoteUpdatedAt = data.meta?.updatedAt || 0;
+        const localUpdatedAt = state.meta?.updatedAt || 0;
+        if (localDirty && localUpdatedAt > remoteUpdatedAt) {
+          queueRemoteSave({ immediate: true });
+          return;
+        }
+        lastRemoteText = text;
+        applyRemoteState(data);
+        localDirty = false;
+        renderAll();
+      }
+    )
+    .subscribe();
   setInterval(syncFromRemote, SYNC_INTERVAL_MS);
 }
 
