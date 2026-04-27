@@ -1742,15 +1742,26 @@ input:focus {
       <input type="checkbox" id="session-interactive-toggle" style="width:18px;height:18px;cursor:pointer;" onchange="document.getElementById('session-strategy-row').style.display=this.checked?'flex':'none'" />
       <span>🎲 מוד אינטראקטיבי — מודי משחק מיוחדים יוגרלו במהלך הסשן</span>
     </label>
-    <div id="session-strategy-row" style="display:none;justify-content:center;align-items:center;gap:18px;flex-wrap:wrap;margin-bottom:14px;font-size:0.85rem;color:var(--text2);">
-      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
-        <input type="radio" name="session-strategy" value="random" checked /> 🎲 רנדומלי
-      </label>
-      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
-        <input type="radio" name="session-strategy" value="pattern" /> 📋 מסודר — כל
-        <input type="number" id="session-pattern-every" min="2" value="3" style="width:48px;text-align:center;" />
-        משחקים, אחד מיוחד
-      </label>
+    <div id="session-strategy-row" style="display:none;flex-direction:column;align-items:center;gap:10px;margin-bottom:14px;font-size:0.85rem;color:var(--text2);">
+      <div style="display:flex;justify-content:center;align-items:center;gap:18px;flex-wrap:wrap;">
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+          <input type="radio" name="session-strategy" value="random" checked /> 🎲 רנדומלי
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+          <input type="radio" name="session-strategy" value="pattern" /> 📋 מסודר — כל
+          <input type="number" id="session-pattern-every" min="2" value="3" style="width:48px;text-align:center;" />
+          משחקים, אחד מיוחד
+        </label>
+      </div>
+      <div style="display:flex;justify-content:center;align-items:center;gap:14px;flex-wrap:wrap;font-size:0.8rem;">
+        <span style="color:var(--text3);">🥊 HP של הבודד ב־3VS1/2VS1:</span>
+        <label style="display:flex;align-items:center;gap:4px;cursor:pointer;">
+          <input type="radio" name="session-solo-hp" value="2" checked /> 2HP
+        </label>
+        <label style="display:flex;align-items:center;gap:4px;cursor:pointer;">
+          <input type="radio" name="session-solo-hp" value="3" /> 3HP
+        </label>
+      </div>
     </div>
     <div style="display:flex;gap:10px;justify-content:center">
       <button class="btn btn-primary" onclick="confirmSessionStart()">⚔️ התחל סשן!</button>
@@ -1791,6 +1802,15 @@ input:focus {
     </div>
     <div style="font-size:0.78rem;color:var(--text2);text-transform:uppercase;letter-spacing:2px;margin-bottom:8px;">מודים מיוחדים פעילים</div>
     <div id="modes-edit-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;font-size:0.88rem;"></div>
+    <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;font-size:0.82rem;color:var(--text2);margin-bottom:14px;padding:8px 10px;border:1px solid #ff3a3a40;border-radius:8px;background:#ff3a3a10;">
+      <span style="color:#ff8a8a;font-weight:700;">🥊 HP של הבודד ב־3VS1/2VS1:</span>
+      <label style="display:flex;align-items:center;gap:4px;cursor:pointer;">
+        <input type="radio" name="strategy-edit-solo-hp" value="2" /> 2HP
+      </label>
+      <label style="display:flex;align-items:center;gap:4px;cursor:pointer;">
+        <input type="radio" name="strategy-edit-solo-hp" value="3" /> 3HP
+      </label>
+    </div>
     <div id="modes-edit-summary" style="font-size:0.78rem;color:var(--text3);margin-bottom:18px;"></div>
     <div class="btn-row">
       <button class="btn btn-primary btn-sm" onclick="applyStrategyEdit()">שמור</button>
@@ -1868,10 +1888,13 @@ function ensureSessionDefaults(s) {
   if (typeof s.currentHuntedId === 'undefined') s.currentHuntedId = null;
   if (typeof s.currentPairs === 'undefined') s.currentPairs = null;
   if (typeof s.currentPairWinnerIdx === 'undefined') s.currentPairWinnerIdx = null;
+  if (typeof s.currentSoloId === 'undefined') s.currentSoloId = null;
+  if (typeof s.currentSoloWon === 'undefined') s.currentSoloWon = null;
   if (!s.currentKnockouts) s.currentKnockouts = {};
   if (!Array.isArray(s.enabledModes)) s.enabledModes = [...SPECIAL_MODE_IDS];
   if (!['pattern', 'random', 'none'].includes(s.modeStrategy)) s.modeStrategy = 'random';
   if (typeof s.modePatternEvery !== 'number' || s.modePatternEvery < 2) s.modePatternEvery = 3;
+  if (s.soloHp !== 2 && s.soloHp !== 3) s.soloHp = 2;
   return s;
 }
 
@@ -2337,20 +2360,32 @@ const GAME_MODES = {
   kingslayer: { id:'kingslayer', emoji:'👑', name:'Kingslayer',          desc:'נקודת בונוס לכל נוקאאוט של מוביל הסשן.',                       color:'#ffd700' },
   underdog:   { id:'underdog',   emoji:'💀', name:'Underdog Rage',       desc:'המקום האחרון בסשן מקבל נקודת בונוס לכל נוקאאוט שלו.',         color:'#7a4dff' },
   pairs:      { id:'pairs',      emoji:'🤝', name:'קרב זוגות',           desc:'שני זוגות מתמודדים — הזוג המנצח מקבל 2 נקודות לכל לוחם, המפסידים 0.', color:'#3a8fff' },
+  solo:       { id:'solo',       emoji:'🥊', name:'3VS1 / 2VS1',         desc:'לוחם בודד עם HP נוסף נגד כל השאר. אם הבודד ניצח — +3 לו וכלום לאחרים. אם הפסיד — +1 לכל יריב.', color:'#ff3a3a' },
 };
-const SPECIAL_MODE_IDS = ['palestine','hunted','kingslayer','underdog','pairs'];
+const SPECIAL_MODE_IDS = ['palestine','hunted','kingslayer','underdog','pairs','solo'];
 
 function getEligibleSpecialModes(sess) {
   const enabled = Array.isArray(sess.enabledModes) ? sess.enabledModes : SPECIAL_MODE_IDS;
   return SPECIAL_MODE_IDS.filter(id => {
     if (!enabled.includes(id)) return false;
     if (id === 'pairs') return sess.fighters.length === 4;
+    if (id === 'solo') return sess.fighters.length === 3 || sess.fighters.length === 4;
     return true;
   });
 }
 
 function modeRequiresKnockouts(modeId) {
-  return SPECIAL_MODE_IDS.includes(modeId) && modeId !== 'pairs';
+  return SPECIAL_MODE_IDS.includes(modeId) && modeId !== 'pairs' && modeId !== 'solo';
+}
+
+function getModeDef(id, fighterCount) {
+  const m = GAME_MODES[id];
+  if (!m) return GAME_MODES.normal;
+  if (id === 'solo') {
+    const label = fighterCount === 3 ? '2VS1' : '3VS1';
+    return { ...m, name: label };
+  }
+  return m;
 }
 
 function getSessionLeaderId(sess) {
@@ -2396,6 +2431,14 @@ function computeModeBonus(sess, game) {
   } else if (game.mode === 'pairs') {
     // Legacy pairs games — knockouts-based bonus
     sess.fighters.forEach(f => { bonus[f.id] = ko[f.id] || 0; });
+  } else if (game.mode === 'solo' && game.soloId) {
+    if (game.soloWon) {
+      bonus[game.soloId] = 3;
+    } else {
+      (game.fighters || []).forEach(fid => {
+        if (fid !== game.soloId) bonus[fid] = 1;
+      });
+    }
   }
   return bonus;
 }
@@ -2407,7 +2450,7 @@ let lastSeenRollIds = {}; // sessionId -> lastRollId, populated on first sight t
 function showRemoteRollReveal(sess) {
   if (!sess || rollInProgress) return;
   const finalMode = sess.currentMode || 'normal';
-  const fm = GAME_MODES[finalMode];
+  const fm = getModeDef(finalMode, sess.fighters.length);
   if (!fm) return;
 
   const overlay = document.createElement('div');
@@ -2471,6 +2514,24 @@ function showRemoteRollReveal(sess) {
       overlay.appendChild(pairsLayer);
       setTimeout(dismiss, 2400);
     }, 1800);
+  } else if (finalMode === 'solo' && sess.currentSoloId) {
+    setTimeout(() => {
+      const lone = sess.fighters.find(f => f.id === sess.currentSoloId);
+      if (!lone) { dismiss(); return; }
+      const others = sess.fighters.filter(f => f.id !== sess.currentSoloId);
+      const layer = document.createElement('div');
+      layer.className = 'hunted-reveal';
+      layer.innerHTML = `
+        <div class="hunted-reveal-card" style="border-color:#ff3a3a;box-shadow:0 0 30px #ff3a3a90;">
+          <div class="hunted-reveal-status" style="color:#ff8a8a;">🥊 ${others.length}VS1 — הבודד הוא...</div>
+          <div class="hunted-reveal-avatar">${getAvatar(lone)}</div>
+          <div class="hunted-reveal-name" style="color:#ff8a8a;">${lone.name}</div>
+          <div style="margin-top:8px;font-size:0.95rem;color:#ffd5d5;font-weight:700;">${sess.soloHp || 2}HP · השאר 1HP</div>
+        </div>
+      `;
+      overlay.appendChild(layer);
+      setTimeout(dismiss, 2400);
+    }, 1800);
   } else {
     setTimeout(dismiss, 2200);
   }
@@ -2494,7 +2555,7 @@ function checkRemoteRoll(opts = {}) {
   if (rid.startsWith(CLIENT_ID + '-')) return; // it's our own roll
   const panel = document.getElementById('center-panel');
   if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  const fm = GAME_MODES[sess.currentMode || 'normal'];
+  const fm = getModeDef(sess.currentMode || 'normal', sess.fighters.length);
   let extra = '';
   if (sess.currentMode === 'hunted' && sess.currentHuntedId) {
     const h = sess.fighters.find(f => f.id === sess.currentHuntedId);
@@ -2502,6 +2563,9 @@ function checkRemoteRoll(opts = {}) {
   } else if (sess.currentMode === 'pairs' && sess.currentPairs) {
     const names = sess.currentPairs.map(p => p.map(id => sess.fighters.find(f => f.id === id)?.name).filter(Boolean).join(' & ')).join(' | ');
     if (names) extra = ` — ${names}`;
+  } else if (sess.currentMode === 'solo' && sess.currentSoloId) {
+    const lone = sess.fighters.find(f => f.id === sess.currentSoloId);
+    if (lone) extra = ` — בודד: ${lone.name} (${sess.soloHp || 2}HP)`;
   }
   toast(`📡 הוגרל: ${fm.emoji} ${fm.name}${extra}`);
   showRemoteRollReveal(sess);
@@ -2539,6 +2603,8 @@ function rollNextMode() {
     sess.currentMode = 'normal';
     sess.currentHuntedId = null;
     sess.currentPairs = null;
+    sess.currentSoloId = null;
+    sess.currentSoloWon = null;
     sess.currentKnockouts = {};
     sess.lastRollId = `${CLIENT_ID}-${Date.now()}`;
     lastSeenRollIds[sess.id] = sess.lastRollId;
@@ -2579,7 +2645,7 @@ function rollNextMode() {
     const t = Math.min(1, elapsed / totalDuration);
     // Ease-out interval (60ms → ~340ms)
     const interval = 60 + 280 * t * t;
-    const m = GAME_MODES[cycle[i % cycle.length]];
+    const m = getModeDef(cycle[i % cycle.length], sess.fighters.length);
     emojiEl.textContent = m.emoji;
     nameEl.textContent = m.name;
     nameEl.style.color = m.color;
@@ -2603,6 +2669,8 @@ function rollNextMode() {
       sess.currentMode = finalMode;
       sess.currentHuntedId = null;
       sess.currentPairs = null;
+      sess.currentSoloId = null;
+      sess.currentSoloWon = null;
       sess.currentKnockouts = {};
       if (finalMode === 'hunted') {
         const fs = sess.fighters;
@@ -2616,8 +2684,11 @@ function rollNextMode() {
           [[ids[0], ids[3]], [ids[1], ids[2]]],
         ];
         sess.currentPairs = pairings[Math.floor(Math.random() * 3)];
+      } else if (finalMode === 'solo' && (sess.fighters.length === 3 || sess.fighters.length === 4)) {
+        const fs = sess.fighters;
+        sess.currentSoloId = fs[Math.floor(Math.random() * fs.length)].id;
       }
-      const fm = GAME_MODES[finalMode];
+      const fm = getModeDef(finalMode, sess.fighters.length);
       card.classList.remove('spinning');
       card.classList.add('revealed');
       card.style.color = fm.color;
@@ -2696,6 +2767,25 @@ function rollNextMode() {
           overlay.appendChild(pairsLayer);
           setTimeout(dismiss, 3200);
         }, 3000);
+      } else if (finalMode === 'solo' && sess.currentSoloId) {
+        setTimeout(() => {
+          const lone = sess.fighters.find(f => f.id === sess.currentSoloId);
+          if (!lone) { dismiss(); return; }
+          const others = sess.fighters.filter(f => f.id !== sess.currentSoloId);
+          const layer = document.createElement('div');
+          layer.className = 'hunted-reveal';
+          layer.innerHTML = `
+            <div class="hunted-reveal-card" style="border-color:#ff3a3a;box-shadow:0 0 30px #ff3a3a90;">
+              <div class="hunted-reveal-status" style="color:#ff8a8a;">🥊 ${others.length}VS1 — הבודד הוא...</div>
+              <div class="hunted-reveal-avatar">${getAvatar(lone)}</div>
+              <div class="hunted-reveal-name" style="color:#ff8a8a;">${lone.name}</div>
+              <div style="margin-top:8px;font-size:0.95rem;color:#ffd5d5;font-weight:700;">${sess.soloHp || 2}HP · השאר 1HP</div>
+              <div style="margin-top:6px;font-size:0.78rem;color:var(--text2);">ניצח → +3 לבודד · הפסיד → +1 לכל יריב</div>
+            </div>
+          `;
+          overlay.appendChild(layer);
+          setTimeout(dismiss, 2800);
+        }, 2400);
       } else {
         setTimeout(dismiss, 1900);
       }
@@ -2748,13 +2838,19 @@ function renderModesEditList() {
   if (!listEl) return;
   const enabled = new Set(sess.enabledModes || SPECIAL_MODE_IDS);
   listEl.innerHTML = SPECIAL_MODE_IDS.map(id => {
-    const m = GAME_MODES[id];
-    const disabled = id === 'pairs' && sess.fighters.length !== 4;
+    const m = getModeDef(id, sess.fighters.length);
+    let disabled = false;
+    let hint = '';
+    if (id === 'pairs' && sess.fighters.length !== 4) {
+      disabled = true; hint = ' (זמין רק עם 4 לוחמים)';
+    } else if (id === 'solo' && sess.fighters.length !== 3 && sess.fighters.length !== 4) {
+      disabled = true; hint = ' (זמין רק עם 3 או 4 לוחמים)';
+    }
     return `
       <label style="display:flex;align-items:flex-start;gap:8px;cursor:${disabled ? 'not-allowed' : 'pointer'};opacity:${disabled ? 0.5 : 1};">
         <input type="checkbox" data-mode="${id}" ${enabled.has(id) ? 'checked' : ''} ${disabled ? 'disabled' : ''} onchange="updateModesEditSummary()" />
         <div style="flex:1;">
-          <div style="font-weight:700;color:${m.color};">${m.emoji} ${m.name}${disabled ? ' (זמין רק עם 4 לוחמים)' : ''}</div>
+          <div style="font-weight:700;color:${m.color};">${m.emoji} ${m.name}${hint}</div>
           <div style="font-size:0.72rem;color:var(--text3);">${m.desc}</div>
         </div>
       </label>
@@ -2775,7 +2871,11 @@ function updateModesEditSummary() {
   }
   const checks = [...document.querySelectorAll('#modes-edit-list input[type="checkbox"]:checked')]
     .map(c => c.dataset.mode);
-  const eligibleNow = checks.filter(id => !(id === 'pairs' && sess.fighters.length !== 4));
+  const eligibleNow = checks.filter(id => {
+    if (id === 'pairs' && sess.fighters.length !== 4) return false;
+    if (id === 'solo' && sess.fighters.length !== 3 && sess.fighters.length !== 4) return false;
+    return true;
+  });
   if (!eligibleNow.length) {
     sumEl.innerHTML = `⚠️ אין מודים מיוחדים פעילים — כל המשחקים יהיו רגילים.`;
     return;
@@ -2795,6 +2895,8 @@ function openStrategyEditor() {
   document.getElementById('strategy-modal').classList.remove('hidden');
   document.querySelector(`input[name="strategy-edit"][value="${sess.modeStrategy}"]`).checked = true;
   document.getElementById('strategy-edit-every').value = sess.modePatternEvery;
+  const hpEl = document.querySelector(`input[name="strategy-edit-solo-hp"][value="${sess.soloHp || 2}"]`);
+  if (hpEl) hpEl.checked = true;
   renderModesEditList();
 }
 function closeStrategyEditor() {
@@ -2810,6 +2912,8 @@ function applyStrategyEdit() {
   sess.modeStrategy = val;
   sess.modePatternEvery = every;
   sess.enabledModes = checks.length ? checks : [];
+  const hpVal = parseInt(document.querySelector('input[name="strategy-edit-solo-hp"]:checked')?.value || '2');
+  sess.soloHp = (hpVal === 3) ? 3 : 2;
   save();
   closeStrategyEditor();
   renderAll();
@@ -2919,7 +3023,9 @@ function renderSessionControl() {
     } else if (sess.modeStrategy === 'none') {
       strategyText = `⚔️ ללא מודים מיוחדים`;
     } else {
-      strategyText = `🎲 רנדומלי · 12.5% לכל מוד מיוחד`;
+      const eligibleCount = getEligibleSpecialModes(sess).length;
+      const each = eligibleCount ? (60 / eligibleCount).toFixed(1).replace(/\.0$/, '') : '0';
+      strategyText = `🎲 רנדומלי · רגיל 40% · ${each}% לכל מוד פעיל (${eligibleCount})`;
     }
     interactiveBlock = `
       <div style="margin-top:10px;padding:8px 10px;border-radius:8px;border:1px solid #ff5ac860;background:#ff5ac815;display:flex;flex-direction:column;gap:6px;">
@@ -2991,6 +3097,8 @@ function confirmSessionStart() {
   const strategy = (interactive && strategyEl) ? strategyEl.value : 'random';
   const patternEveryRaw = parseInt(document.getElementById('session-pattern-every')?.value || '3');
   const patternEvery = Math.max(2, isNaN(patternEveryRaw) ? 3 : patternEveryRaw);
+  const soloHpRaw = parseInt(document.querySelector('input[name="session-solo-hp"]:checked')?.value || '2');
+  const soloHp = (soloHpRaw === 3) ? 3 : 2;
   const newSession = {
     id: Date.now(),
     startTime: Date.now(),
@@ -3006,9 +3114,12 @@ function confirmSessionStart() {
     modeStrategy: strategy,
     modePatternEvery: patternEvery,
     enabledModes: [...SPECIAL_MODE_IDS],
+    soloHp,
     currentMode: 'normal',
     currentHuntedId: null,
     currentPairs: null,
+    currentSoloId: null,
+    currentSoloWon: null,
     currentKnockouts: {}
   };
   fighters.forEach(f => newSession.scores[f.id] = 0);
@@ -3067,7 +3178,7 @@ function renderGameArea() {
   const readyToSave = allPlaced && !!firstHitId;
 
   const curMode = sess.currentMode || 'normal';
-  const curModeDef = GAME_MODES[curMode] || GAME_MODES.normal;
+  const curModeDef = getModeDef(curMode, sess.fighters.length);
   const isSpecial = SPECIAL_MODE_IDS.includes(curMode);
 
   let html = `
@@ -3088,6 +3199,18 @@ function renderGameArea() {
           <span style="color:#3a8fff;">${getAvatar(c)} ${c.name} & ${getAvatar(d)} ${d.name}</span>
         </div>
       `;
+    } else if (curMode === 'solo' && sess.currentSoloId) {
+      const lone = sess.fighters.find(f => f.id === sess.currentSoloId);
+      const others = sess.fighters.filter(f => f.id !== sess.currentSoloId);
+      if (lone) {
+        extra = `
+          <div style="margin-top:8px;display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;font-size:0.9rem;font-weight:700;">
+            <span style="color:#ff8a8a;">${getAvatar(lone)} ${lone.name} (${sess.soloHp || 2}HP)</span>
+            <span style="color:#ffd700;">⚔️ VS ⚔️</span>
+            <span style="color:var(--text);">${others.map(f => getAvatar(f) + ' ' + f.name).join(' · ')} (1HP)</span>
+          </div>
+        `;
+      }
     }
     // Mode display lives here; rollNextMode() will fill it during the spin and after settle.
     html += `
@@ -3121,7 +3244,47 @@ function renderGameArea() {
     `;
   }
 
-  if (sess.currentGameStarted && curMode === 'pairs' && sess.currentPairs) {
+  if (sess.currentGameStarted && curMode === 'solo' && sess.currentSoloId) {
+    const lone = sess.fighters.find(f => f.id === sess.currentSoloId);
+    const others = sess.fighters.filter(f => f.id !== sess.currentSoloId);
+    const won = sess.currentSoloWon;
+    html += `<div class="game-number-tag">GAME ${gameNum} · בחר תוצאה</div>`;
+    if (lone) {
+      html += `
+        <div style="display:flex;flex-direction:column;align-items:center;gap:14px;margin-bottom:14px;">
+          <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;justify-content:center;padding:12px;border-radius:12px;background:#ff3a3a18;border:2px solid #ff3a3a;">
+            <div style="text-align:center;">
+              <div style="font-size:2.4rem;">${getAvatar(lone)}</div>
+              <div style="font-weight:700;font-size:0.95rem;color:#ff8a8a;">${lone.name}</div>
+              <div style="font-size:0.78rem;color:#ffd5d5;font-weight:700;">${sess.soloHp || 2}HP</div>
+            </div>
+            <div style="font-weight:700;color:#ffd700;font-size:1.1rem;">⚔️ VS ⚔️</div>
+            <div style="text-align:center;">
+              <div style="font-size:1.8rem;">${others.map(f => getAvatar(f)).join(' ')}</div>
+              <div style="font-weight:700;font-size:0.85rem;">${others.map(f => f.name).join(' · ')}</div>
+              <div style="font-size:0.78rem;color:var(--text2);font-weight:700;">1HP כל אחד</div>
+            </div>
+          </div>
+          <div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center;">
+            <button onclick="selectSoloOutcome(true)" style="cursor:pointer;padding:14px 22px;border-radius:12px;border:${won === true ? '3px solid #ffd700' : '2px solid var(--border)'};background:${won === true ? '#ffd70020' : 'var(--bg2)'};color:${won === true ? '#ffd700' : 'var(--text)'};font-weight:700;font-size:0.95rem;">
+              🏆 הבודד ניצח<br><span style="font-size:0.8rem;font-weight:600;">+3 נקודות לבודד</span>
+            </button>
+            <button onclick="selectSoloOutcome(false)" style="cursor:pointer;padding:14px 22px;border-radius:12px;border:${won === false ? '3px solid #ff3a3a' : '2px solid var(--border)'};background:${won === false ? '#ff3a3a20' : 'var(--bg2)'};color:${won === false ? '#ff8a8a' : 'var(--text)'};font-weight:700;font-size:0.95rem;">
+              💀 הבודד הפסיד<br><span style="font-size:0.8rem;font-weight:600;">+1 לכל יריב</span>
+            </button>
+          </div>
+        </div>
+      `;
+    }
+    html += `<div class="game-btn-row">`;
+    if (won === true || won === false) {
+      html += `<button class="btn btn-success" onclick="saveGame()">💾 שמור משחק</button>`;
+    } else {
+      html += `<div class="save-requirement">בחר תוצאה כדי להמשיך</div>`;
+    }
+    html += `<button class="btn btn-ghost btn-sm" onclick="resetPlacements()">🔄 אפס</button>`;
+    html += `</div>`;
+  } else if (sess.currentGameStarted && curMode === 'pairs' && sess.currentPairs) {
     const winnerIdx = sess.currentPairWinnerIdx;
     html += `<div class="game-number-tag">GAME ${gameNum} · בחר את הזוג המנצח</div>`;
     const pairsHtml = sess.currentPairs.map((pair, idx) => {
@@ -3268,6 +3431,8 @@ function startCurrentGame() {
   sess.currentMode = 'normal';
   sess.currentHuntedId = null;
   sess.currentPairs = null;
+  sess.currentSoloId = null;
+  sess.currentSoloWon = null;
   save();
   renderAll();
   // Scroll the active game panel into view so it's clear focus has shifted
@@ -3319,6 +3484,7 @@ function resetPlacements() {
   sess.currentFirstHitId = null;
   sess.currentKnockouts = {};
   sess.currentPairWinnerIdx = null;
+  sess.currentSoloWon = null;
   save();
   renderGameArea();
 }
@@ -3331,11 +3497,34 @@ function selectWinningPair(idx) {
   renderGameArea();
 }
 
+function selectSoloOutcome(won) {
+  const sess = state.session;
+  if (!sess) return;
+  sess.currentSoloWon = !!won;
+  save();
+  renderGameArea();
+}
+
 function saveGame() {
   const sess = state.session;
   if (!sess) return;
   const mode = sess.currentMode || 'normal';
-  const modeDef = GAME_MODES[mode] || GAME_MODES.normal;
+  const modeDef = getModeDef(mode, sess.fighters.length);
+
+  if (mode === 'solo' && sess.currentSoloId) {
+    if (sess.currentSoloWon !== true && sess.currentSoloWon !== false) {
+      toast('בחר אם הבודד ניצח או הפסיד');
+      return;
+    }
+    const lone = sess.fighters.find(f => f.id === sess.currentSoloId);
+    const others = sess.fighters.filter(f => f.id !== sess.currentSoloId);
+    const result = sess.currentSoloWon
+      ? `🏆 ${lone ? getAvatar(lone) + ' ' + lone.name : 'הבודד'} ניצח (+3)`
+      : `💀 הבודד הפסיד · ${others.map(f => getAvatar(f) + ' ' + f.name).join(' · ')} מקבלים +1`;
+    const summary = `מוד: ${modeDef.emoji} ${modeDef.name} (${sess.soloHp || 2}HP)\n${result}`;
+    confirm2('סיום משחק', `לסיים ולשמור את המשחק?\n${summary}`, () => finalizeSaveGame());
+    return;
+  }
 
   if (mode === 'pairs' && sess.currentPairs) {
     if (sess.currentPairWinnerIdx === null || sess.currentPairWinnerIdx === undefined) {
@@ -3382,19 +3571,23 @@ function finalizeSaveGame() {
   const fighters = [...sess.currentGameFighters];
   const mode = sess.currentMode || 'normal';
   const isPairs = mode === 'pairs' && sess.currentPairs;
-  const placements = isPairs ? {} : { ...sess.currentPlacements };
+  const isSolo = mode === 'solo' && sess.currentSoloId;
+  const placements = (isPairs || isSolo) ? {} : { ...sess.currentPlacements };
 
   const game = {
     id: Date.now(),
     fighters: fighters.map(f => f.id),
     placements,
-    firstHitId: isPairs ? null : sess.currentFirstHitId,
+    firstHitId: (isPairs || isSolo) ? null : sess.currentFirstHitId,
     mode,
     huntedId: mode === 'hunted' ? sess.currentHuntedId : null,
     leaderId: mode === 'kingslayer' ? getSessionLeaderId(sess) : null,
     lastId: mode === 'underdog' ? getSessionLastId(sess) : null,
     pairs: isPairs ? sess.currentPairs : null,
     winningPairIdx: isPairs ? sess.currentPairWinnerIdx : null,
+    soloId: isSolo ? sess.currentSoloId : null,
+    soloWon: isSolo ? !!sess.currentSoloWon : null,
+    soloHp: isSolo ? (sess.soloHp || 2) : null,
     knockouts: modeRequiresKnockouts(mode) ? { ...(sess.currentKnockouts || {}) } : {},
     timestamp: Date.now()
   };
@@ -3424,6 +3617,8 @@ function finalizeSaveGame() {
   sess.currentHuntedId = null;
   sess.currentPairs = null;
   sess.currentPairWinnerIdx = null;
+  sess.currentSoloId = null;
+  sess.currentSoloWon = null;
   sess.currentKnockouts = {};
 
   save();
@@ -3582,11 +3777,23 @@ function renderGameHistory() {
   el.innerHTML = [...state.session.games].reverse().map((game, i) => {
     const num = state.session.games.length - i;
     const mode = game.mode || 'normal';
-    const md = GAME_MODES[mode] || GAME_MODES.normal;
-    const modeChip = `<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:10px;font-size:0.72rem;font-weight:700;background:${md.color}20;color:${md.color};border:1px solid ${md.color}60;">${md.emoji} ${md.name}</span>`;
+    const md = getModeDef(mode, (game.fighters || []).length);
+    const modeChip = `<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:10px;font-size:0.72rem;font-weight:700;background:${md.color}20;color:${md.color};border:1px solid ${md.color}60;">${md.emoji} ${md.name}${mode === 'solo' && game.soloHp ? ` · ${game.soloHp}HP` : ''}</span>`;
 
     let body;
-    if (mode === 'pairs' && game.pairs && typeof game.winningPairIdx === 'number') {
+    if (mode === 'solo' && game.soloId) {
+      const lone = state.session.fighters.find(x => x.id === game.soloId);
+      const others = (game.fighters || []).filter(fid => fid !== game.soloId).map(fid => state.session.fighters.find(x => x.id === fid)).filter(Boolean);
+      if (game.soloWon) {
+        const winChip = `<span class="place-chip chip-1">🏆 ${lone ? getAvatar(lone) + ' ' + lone.name : 'הבודד'} +3</span>`;
+        const loseChip = `<span class="place-chip chip-4">${others.map(f => getAvatar(f) + ' ' + f.name).join(' · ')} +0</span>`;
+        body = `<div class="game-hist-placements">${winChip}${loseChip}</div>`;
+      } else {
+        const loneChip = `<span class="place-chip chip-4">💀 ${lone ? getAvatar(lone) + ' ' + lone.name : 'הבודד'} +0</span>`;
+        const winChip = `<span class="place-chip chip-1">${others.map(f => getAvatar(f) + ' ' + f.name).join(' · ')} +1 כל אחד</span>`;
+        body = `<div class="game-hist-placements">${loneChip}${winChip}</div>`;
+      }
+    } else if (mode === 'pairs' && game.pairs && typeof game.winningPairIdx === 'number') {
       const winners = (game.pairs[game.winningPairIdx] || []).map(id => state.session.fighters.find(x => x.id === id)).filter(Boolean);
       const losers  = (game.pairs[1 - game.winningPairIdx] || []).map(id => state.session.fighters.find(x => x.id === id)).filter(Boolean);
       const winChip = `<span class="place-chip chip-1">🏆 ${winners.map(f => getAvatar(f) + ' ' + f.name).join(' & ')} +2</span>`;
