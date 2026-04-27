@@ -1864,6 +1864,7 @@ function ensureSessionDefaults(s) {
   if (!s.currentMode) s.currentMode = 'normal';
   if (typeof s.currentHuntedId === 'undefined') s.currentHuntedId = null;
   if (typeof s.currentPairs === 'undefined') s.currentPairs = null;
+  if (typeof s.currentPairWinnerIdx === 'undefined') s.currentPairWinnerIdx = null;
   if (!s.currentKnockouts) s.currentKnockouts = {};
   if (!Array.isArray(s.enabledModes)) s.enabledModes = [...SPECIAL_MODE_IDS];
   if (s.modeStrategy !== 'pattern' && s.modeStrategy !== 'random') s.modeStrategy = 'random';
@@ -2332,7 +2333,7 @@ const GAME_MODES = {
   hunted:     { id:'hunted',     emoji:'🎯', name:'Hunted',             desc:'לוחם רנדומלי הוכרז כניצוד — נקודת בונוס לכל נוקאאוט שלו.',  color:'#ffb84d' },
   kingslayer: { id:'kingslayer', emoji:'👑', name:'Kingslayer',          desc:'נקודת בונוס לכל נוקאאוט של מוביל הסשן.',                       color:'#ffd700' },
   underdog:   { id:'underdog',   emoji:'💀', name:'Underdog Rage',       desc:'המקום האחרון בסשן מקבל נקודת בונוס לכל נוקאאוט שלו.',         color:'#7a4dff' },
-  pairs:      { id:'pairs',      emoji:'🤝', name:'קרב זוגות',           desc:'שני זוגות מתמודדים — כל לוחם מקבל נקודת בונוס לכל נוקאאוט שעשה.', color:'#3a8fff' },
+  pairs:      { id:'pairs',      emoji:'🤝', name:'קרב זוגות',           desc:'שני זוגות מתמודדים — הזוג המנצח מקבל 2 נקודות לכל לוחם, המפסידים 0.', color:'#3a8fff' },
 };
 const SPECIAL_MODE_IDS = ['palestine','hunted','kingslayer','underdog','pairs'];
 
@@ -2346,7 +2347,7 @@ function getEligibleSpecialModes(sess) {
 }
 
 function modeRequiresKnockouts(modeId) {
-  return SPECIAL_MODE_IDS.includes(modeId);
+  return SPECIAL_MODE_IDS.includes(modeId) && modeId !== 'pairs';
 }
 
 function getSessionLeaderId(sess) {
@@ -2386,7 +2387,11 @@ function computeModeBonus(sess, game) {
     bonus[game.leaderId] = 0;
   } else if (game.mode === 'underdog' && game.lastId) {
     bonus[game.lastId] = ko[game.lastId] || 0;
+  } else if (game.mode === 'pairs' && game.pairs && typeof game.winningPairIdx === 'number') {
+    const winners = game.pairs[game.winningPairIdx] || [];
+    winners.forEach(id => { bonus[id] = 2; });
   } else if (game.mode === 'pairs') {
+    // Legacy pairs games — knockouts-based bonus
     sess.fighters.forEach(f => { bonus[f.id] = ko[f.id] || 0; });
   }
   return bonus;
@@ -3077,7 +3082,36 @@ function renderGameArea() {
     `;
   }
 
-  if (sess.currentGameStarted) {
+  if (sess.currentGameStarted && curMode === 'pairs' && sess.currentPairs) {
+    const winnerIdx = sess.currentPairWinnerIdx;
+    html += `<div class="game-number-tag">GAME ${gameNum} · בחר את הזוג המנצח</div>`;
+    const pairsHtml = sess.currentPairs.map((pair, idx) => {
+      const fs = pair.map(id => sess.fighters.find(f => f.id === id)).filter(Boolean);
+      const isWinner = winnerIdx === idx;
+      const bg = isWinner ? '#3a8fff30' : 'var(--bg2)';
+      const border = isWinner ? '3px solid #3a8fff' : '2px solid var(--border)';
+      const badge = isWinner ? '<div style="position:absolute;top:6px;left:6px;font-size:1.2rem;">🏆</div>' : '';
+      return `
+        <div onclick="selectWinningPair(${idx})" style="position:relative;flex:1;min-width:160px;padding:14px;border-radius:12px;background:${bg};border:${border};cursor:pointer;transition:all 0.2s;text-align:center;">
+          ${badge}
+          <div style="display:flex;align-items:center;justify-content:center;gap:8px;font-size:1.4rem;margin-bottom:6px;">
+            ${fs.map(f => getAvatar(f)).join('<span style="font-size:0.8rem;color:var(--text3);">&amp;</span>')}
+          </div>
+          <div style="font-size:0.85rem;font-weight:700;">${fs.map(f => f.name).join(' & ')}</div>
+          <div style="font-size:0.75rem;color:var(--text2);margin-top:4px;">${isWinner ? '+2 נקודות לכל לוחם' : 'לחץ לבחור כמנצחים'}</div>
+        </div>
+      `;
+    }).join('<div style="display:flex;align-items:center;font-weight:700;color:#ffd700;font-size:1.2rem;">VS</div>');
+    html += `<div style="display:flex;flex-wrap:wrap;gap:12px;align-items:stretch;justify-content:center;margin-bottom:14px;">${pairsHtml}</div>`;
+    html += `<div class="game-btn-row">`;
+    if (winnerIdx !== null && winnerIdx !== undefined) {
+      html += `<button class="btn btn-success" onclick="saveGame()">💾 שמור משחק</button>`;
+    } else {
+      html += `<div class="save-requirement">בחר זוג מנצח כדי להמשיך</div>`;
+    }
+    html += `<button class="btn btn-ghost btn-sm" onclick="resetPlacements()">🔄 אפס</button>`;
+    html += `</div>`;
+  } else if (sess.currentGameStarted) {
     html += `<div class="game-number-tag">GAME ${gameNum} · בחר סדר סיום</div>`;
 
     if (!allPlaced) {
@@ -3245,6 +3279,15 @@ function resetPlacements() {
   sess.currentPlacements = {};
   sess.currentFirstHitId = null;
   sess.currentKnockouts = {};
+  sess.currentPairWinnerIdx = null;
+  save();
+  renderGameArea();
+}
+
+function selectWinningPair(idx) {
+  const sess = state.session;
+  if (!sess) return;
+  sess.currentPairWinnerIdx = idx;
   save();
   renderGameArea();
 }
@@ -3252,6 +3295,22 @@ function resetPlacements() {
 function saveGame() {
   const sess = state.session;
   if (!sess) return;
+  const mode = sess.currentMode || 'normal';
+  const modeDef = GAME_MODES[mode] || GAME_MODES.normal;
+
+  if (mode === 'pairs' && sess.currentPairs) {
+    if (sess.currentPairWinnerIdx === null || sess.currentPairWinnerIdx === undefined) {
+      toast('בחר זוג מנצח לפני השמירה');
+      return;
+    }
+    const winners = sess.currentPairs[sess.currentPairWinnerIdx]
+      .map(id => sess.fighters.find(f => f.id === id))
+      .filter(Boolean);
+    const summary = `מוד: ${modeDef.emoji} ${modeDef.name}\nמנצחים: ${winners.map(f => getAvatar(f) + ' ' + f.name).join(' & ')}`;
+    confirm2('סיום משחק', `לסיים ולשמור את המשחק?\n${summary}`, () => finalizeSaveGame());
+    return;
+  }
+
   const placements = { ...sess.currentPlacements };
   const fighters = [...sess.currentGameFighters];
   const requiredPlacements = Math.min(fighters.length, 4);
@@ -3265,11 +3324,8 @@ function saveGame() {
     return;
   }
 
-  const mode = sess.currentMode || 'normal';
-
   // Confirm before finalizing
   const homo = sess.fighters.find(f => f.id === sess.currentFirstHitId);
-  const modeDef = GAME_MODES[mode] || GAME_MODES.normal;
   let summary = `הומו המשחק: ${homo ? getAvatar(homo) + ' ' + homo.name : '—'}\nמוד: ${modeDef.emoji} ${modeDef.name}`;
   if (modeRequiresKnockouts(mode)) {
     const lines = sess.currentGameFighters
@@ -3284,20 +3340,22 @@ function saveGame() {
 function finalizeSaveGame() {
   const sess = state.session;
   if (!sess) return;
-  const placements = { ...sess.currentPlacements };
   const fighters = [...sess.currentGameFighters];
   const mode = sess.currentMode || 'normal';
+  const isPairs = mode === 'pairs' && sess.currentPairs;
+  const placements = isPairs ? {} : { ...sess.currentPlacements };
 
   const game = {
     id: Date.now(),
     fighters: fighters.map(f => f.id),
     placements,
-    firstHitId: sess.currentFirstHitId,
+    firstHitId: isPairs ? null : sess.currentFirstHitId,
     mode,
     huntedId: mode === 'hunted' ? sess.currentHuntedId : null,
     leaderId: mode === 'kingslayer' ? getSessionLeaderId(sess) : null,
     lastId: mode === 'underdog' ? getSessionLastId(sess) : null,
-    pairs: mode === 'pairs' ? sess.currentPairs : null,
+    pairs: isPairs ? sess.currentPairs : null,
+    winningPairIdx: isPairs ? sess.currentPairWinnerIdx : null,
     knockouts: modeRequiresKnockouts(mode) ? { ...(sess.currentKnockouts || {}) } : {},
     timestamp: Date.now()
   };
@@ -3326,6 +3384,7 @@ function finalizeSaveGame() {
   sess.currentMode = 'normal';
   sess.currentHuntedId = null;
   sess.currentPairs = null;
+  sess.currentPairWinnerIdx = null;
   sess.currentKnockouts = {};
 
   save();
@@ -3483,24 +3542,35 @@ function renderGameHistory() {
 
   el.innerHTML = [...state.session.games].reverse().map((game, i) => {
     const num = state.session.games.length - i;
-    const sortedPlacements = Object.entries(game.placements).sort((a, b) => a[1] - b[1]);
-    const ko = game.knockouts || {};
-    const chips = sortedPlacements.map(([fid, place]) => {
-      const f = state.session.fighters.find(x => x.id === parseInt(fid));
-      if (!f) return '';
-      const koCount = ko[f.id] || 0;
-      const koTag = koCount > 0
-        ? ` <span style="color:#ffb84d;font-weight:700;">+${koCount}🥊</span>`
-        : '';
-      return `<span class="place-chip chip-${place}">${place}. ${getAvatar(f)} ${f.name}${koTag}</span>`;
-    }).join('');
-    const firstHit = game.firstHitId ? state.session.fighters.find(x => x.id === parseInt(game.firstHitId)) : null;
-    const firstHitChip = firstHit
-      ? `<span class="first-hit-chip">הומו: ${getAvatar(firstHit)} ${firstHit.name}</span>`
-      : '';
     const mode = game.mode || 'normal';
     const md = GAME_MODES[mode] || GAME_MODES.normal;
     const modeChip = `<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:10px;font-size:0.72rem;font-weight:700;background:${md.color}20;color:${md.color};border:1px solid ${md.color}60;">${md.emoji} ${md.name}</span>`;
+
+    let body;
+    if (mode === 'pairs' && game.pairs && typeof game.winningPairIdx === 'number') {
+      const winners = (game.pairs[game.winningPairIdx] || []).map(id => state.session.fighters.find(x => x.id === id)).filter(Boolean);
+      const losers  = (game.pairs[1 - game.winningPairIdx] || []).map(id => state.session.fighters.find(x => x.id === id)).filter(Boolean);
+      const winChip = `<span class="place-chip chip-1">🏆 ${winners.map(f => getAvatar(f) + ' ' + f.name).join(' & ')} +2</span>`;
+      const loseChip = `<span class="place-chip chip-4">${losers.map(f => getAvatar(f) + ' ' + f.name).join(' & ')} +0</span>`;
+      body = `<div class="game-hist-placements">${winChip}${loseChip}</div>`;
+    } else {
+      const sortedPlacements = Object.entries(game.placements || {}).sort((a, b) => a[1] - b[1]);
+      const ko = game.knockouts || {};
+      const chips = sortedPlacements.map(([fid, place]) => {
+        const f = state.session.fighters.find(x => x.id === parseInt(fid));
+        if (!f) return '';
+        const koCount = ko[f.id] || 0;
+        const koTag = koCount > 0
+          ? ` <span style="color:#ffb84d;font-weight:700;">+${koCount}🥊</span>`
+          : '';
+        return `<span class="place-chip chip-${place}">${place}. ${getAvatar(f)} ${f.name}${koTag}</span>`;
+      }).join('');
+      const firstHit = game.firstHitId ? state.session.fighters.find(x => x.id === parseInt(game.firstHitId)) : null;
+      const firstHitChip = firstHit
+        ? `<span class="first-hit-chip">הומו: ${getAvatar(firstHit)} ${firstHit.name}</span>`
+        : '';
+      body = `<div class="game-hist-placements">${chips}${firstHitChip}</div>`;
+    }
 
     return `
       <div class="game-hist-item" style="border-left:3px solid ${md.color};">
@@ -3508,7 +3578,7 @@ function renderGameHistory() {
           <span>משחק #${num} ${modeChip}</span>
           <span>${fmtTime(game.timestamp)}</span>
         </div>
-        <div class="game-hist-placements">${chips}${firstHitChip}</div>
+        ${body}
       </div>
     `;
   }).join('');
