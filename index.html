@@ -1619,7 +1619,7 @@ input:focus {
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
-<div id="ephemeral-banner" style="display:none;position:sticky;top:0;z-index:9999;background:linear-gradient(90deg,#ff3a3a,#ffb84d,#ff3a3a);color:#000;font-weight:800;text-align:center;padding:6px 12px;font-size:0.85rem;letter-spacing:1px;border-bottom:2px solid #000;">🧪 מצב בדיקות — נשמר בטבלת בדיקות נפרדת, לא בדאטה האמיתי</div>
+<div id="ephemeral-banner" style="display:none;position:sticky;top:0;z-index:9999;background:linear-gradient(90deg,#ff3a3a,#ffb84d,#ff3a3a);color:#000;font-weight:800;text-align:center;padding:6px 12px;font-size:0.85rem;letter-spacing:1px;border-bottom:2px solid #000;">🧪 מצב בדיקות — נשמר באזור בדיקות נפרד, לא בדאטה האמיתי</div>
 <div id="app">
 <!-- Cyan flame orbs like Brawlhalla spirit fire -->
 <div class="flame-orb" style="width:400px;height:400px;background:#40e0c8;top:-100px;left:-100px;animation-delay:0s"></div>
@@ -1869,10 +1869,11 @@ const EPHEMERAL = (() => {
 const LOCAL_ONLY = false;
 const SYNC_TABLE = EPHEMERAL ? TEST_SYNC_TABLE : MAIN_SYNC_TABLE;
 const SYNC_CHANNEL = `${SYNC_TABLE}_changes`;
+const STORAGE_PREFIX = EPHEMERAL ? 'brawl_test_' : 'brawl_';
 const SYNC_INTERVAL_MS = 15000; // Polling fallback; Realtime handles instant updates
 const REMOTE_SAVE_DEBOUNCE_MS = 450;
 const LOCAL_DIRTY_SYNC_GRACE_MS = 5000;
-const CLIENT_ID_STORAGE_KEY = 'brawl_sync_client_id';
+const CLIENT_ID_STORAGE_KEY = `${STORAGE_PREFIX}sync_client_id`;
 
 const supabaseClient = (window.supabase && SUPABASE_URL && SUPABASE_ANON_KEY)
   ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
@@ -1924,11 +1925,6 @@ let localDirty = false;
 let suppressRemoteSyncUntil = 0;
 
 function getOrCreateClientId() {
-  if (EPHEMERAL) {
-    return (window.crypto && window.crypto.randomUUID)
-      ? `test-${window.crypto.randomUUID()}`
-      : `test-client-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  }
   try {
     let id = localStorage.getItem(CLIENT_ID_STORAGE_KEY);
     if (!id) {
@@ -2000,13 +1996,12 @@ function markLocalChange() {
 }
 
 function saveLocal() {
-  if (EPHEMERAL) return;
-  localStorage.setItem('brawl_fighters', JSON.stringify(state.fighters));
-  localStorage.setItem('brawl_sessions', JSON.stringify(state.sessions));
-  localStorage.setItem('brawl_active_session_id', JSON.stringify(state.activeSessionId));
-  localStorage.setItem('brawl_archive', JSON.stringify(state.archive));
-  localStorage.setItem('brawl_scoring', JSON.stringify(state.scoring));
-  localStorage.setItem('brawl_meta', JSON.stringify(state.meta));
+  localStorage.setItem(`${STORAGE_PREFIX}fighters`, JSON.stringify(state.fighters));
+  localStorage.setItem(`${STORAGE_PREFIX}sessions`, JSON.stringify(state.sessions));
+  localStorage.setItem(`${STORAGE_PREFIX}active_session_id`, JSON.stringify(state.activeSessionId));
+  localStorage.setItem(`${STORAGE_PREFIX}archive`, JSON.stringify(state.archive));
+  localStorage.setItem(`${STORAGE_PREFIX}scoring`, JSON.stringify(state.scoring));
+  localStorage.setItem(`${STORAGE_PREFIX}meta`, JSON.stringify(state.meta));
 }
 
 function save() {
@@ -2016,21 +2011,20 @@ function save() {
 }
 
 function loadLocal() {
-  if (EPHEMERAL) return;
   try {
-    state.fighters = JSON.parse(localStorage.getItem('brawl_fighters') || '[]');
-    state.sessions = JSON.parse(localStorage.getItem('brawl_sessions') || '[]');
-    state.activeSessionId = JSON.parse(localStorage.getItem('brawl_active_session_id') || 'null');
-    state.archive = JSON.parse(localStorage.getItem('brawl_archive') || '[]');
-    state.meta = JSON.parse(localStorage.getItem('brawl_meta') || 'null') || state.meta;
+    state.fighters = JSON.parse(localStorage.getItem(`${STORAGE_PREFIX}fighters`) || '[]');
+    state.sessions = JSON.parse(localStorage.getItem(`${STORAGE_PREFIX}sessions`) || '[]');
+    state.activeSessionId = JSON.parse(localStorage.getItem(`${STORAGE_PREFIX}active_session_id`) || 'null');
+    state.archive = JSON.parse(localStorage.getItem(`${STORAGE_PREFIX}archive`) || '[]');
+    state.meta = JSON.parse(localStorage.getItem(`${STORAGE_PREFIX}meta`) || 'null') || state.meta;
     // Migrate legacy single-session storage
-    const legacy = JSON.parse(localStorage.getItem('brawl_session') || 'null');
-    if (legacy && !state.sessions.find(s => s.id === legacy.id)) {
+    const legacy = EPHEMERAL ? null : JSON.parse(localStorage.getItem('brawl_session') || 'null');
+    if (!EPHEMERAL && legacy && !state.sessions.find(s => s.id === legacy.id)) {
       state.sessions.push(legacy);
       if (!state.activeSessionId) state.activeSessionId = legacy.id;
       localStorage.removeItem('brawl_session');
     }
-    const sc = JSON.parse(localStorage.getItem('brawl_scoring') || 'null');
+    const sc = JSON.parse(localStorage.getItem(`${STORAGE_PREFIX}scoring`) || 'null');
     if (sc) state.scoring = sc;
     normalizeState();
   } catch(e) {
@@ -2105,6 +2099,11 @@ async function syncFromRemote({ initial = false } = {}) {
     const localUpdatedAt = state.meta?.updatedAt || 0;
 
     if (initial && isEmptyRemoteData(data) && hasMeaningfulState(state)) {
+      queueRemoteSave({ immediate: true });
+      return;
+    }
+
+    if (initial && hasMeaningfulState(state) && localUpdatedAt > remoteUpdatedAt) {
       queueRemoteSave({ immediate: true });
       return;
     }
@@ -2380,12 +2379,12 @@ function renderEphemeralPanel() {
   const btnEl = document.getElementById('ephemeral-toggle-btn');
   if (!statusEl || !btnEl) return;
   if (EPHEMERAL) {
-    statusEl.innerHTML = `<b style="color:#ff8a8a;">🧪 פעיל כרגע.</b> שינויים נשמרים בטבלת בדיקות נפרדת (${TEST_SYNC_TABLE}) ומסונכרנים בין מכשירים. הדאטה האמיתי ו־localStorage לא נוגעים בזה.`;
+    statusEl.innerHTML = `<b style="color:#ff8a8a;">🧪 פעיל כרגע.</b> שינויים נשמרים ב־localStorage נפרד ובטבלת בדיקות נפרדת (${TEST_SYNC_TABLE}). הדאטה האמיתי לא נוגע בזה.`;
     btnEl.textContent = '⏻ צא ממצב בדיקות';
     btnEl.className = 'btn btn-danger';
     btnEl.style.width = '100%';
   } else {
-    statusEl.innerHTML = `מצב נסיוני שמבודד את האפליקציה: ללא localStorage, עם סנכרון לענן דרך טבלת בדיקות נפרדת. שימושי לבדוק מודים/הגרלות בלי "ללכלך" את הסשנים האמיתיים.`;
+    statusEl.innerHTML = `מצב נסיוני שמבודד את האפליקציה: localStorage נפרד וסנכרון ענן דרך טבלת בדיקות נפרדת. שימושי לבדוק מודים/הגרלות בלי "ללכלך" את הסשנים האמיתיים.`;
     btnEl.textContent = '🧪 הפעל מצב בדיקות (ייטען מחדש)';
     btnEl.className = 'btn btn-primary';
     btnEl.style.width = '100%';
