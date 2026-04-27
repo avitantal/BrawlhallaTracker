@@ -1619,6 +1619,7 @@ input:focus {
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
+<div id="ephemeral-banner" style="display:none;position:sticky;top:0;z-index:9999;background:linear-gradient(90deg,#ff3a3a,#ffb84d,#ff3a3a);color:#000;font-weight:800;text-align:center;padding:6px 12px;font-size:0.85rem;letter-spacing:1px;border-bottom:2px solid #000;">🧪 מצב בדיקות — שינויים לא נשמרים, רענון = איפוס</div>
 <div id="app">
 <!-- Cyan flame orbs like Brawlhalla spirit fire -->
 <div class="flame-orb" style="width:400px;height:400px;background:#40e0c8;top:-100px;left:-100px;animation-delay:0s"></div>
@@ -1850,7 +1851,13 @@ function switchTab(tab) {
 const SUPABASE_URL = 'https://btthehystdtdujnihrub.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_gptwS7DYH7eL8qO9WibLog_9nXxUfq4';
 const SYNC_KEY = 'main';
-const LOCAL_ONLY = false;
+const EPHEMERAL = (() => {
+  try {
+    const p = new URLSearchParams(window.location.search);
+    return p.get('test') === '1' || p.get('ephemeral') === '1';
+  } catch (e) { return false; }
+})();
+const LOCAL_ONLY = EPHEMERAL;
 const SYNC_INTERVAL_MS = 15000; // Polling fallback; Realtime handles instant updates
 const REMOTE_SAVE_DEBOUNCE_MS = 450;
 const LOCAL_DIRTY_SYNC_GRACE_MS = 5000;
@@ -1977,6 +1984,7 @@ function markLocalChange() {
 }
 
 function saveLocal() {
+  if (EPHEMERAL) return;
   localStorage.setItem('brawl_fighters', JSON.stringify(state.fighters));
   localStorage.setItem('brawl_sessions', JSON.stringify(state.sessions));
   localStorage.setItem('brawl_active_session_id', JSON.stringify(state.activeSessionId));
@@ -1992,6 +2000,7 @@ function save() {
 }
 
 function loadLocal() {
+  if (EPHEMERAL) return;
   try {
     state.fighters = JSON.parse(localStorage.getItem('brawl_fighters') || '[]');
     state.sessions = JSON.parse(localStorage.getItem('brawl_sessions') || '[]');
@@ -3921,6 +3930,11 @@ function renderAll() {
 
 // ==================== INIT ====================
 load();
+if (EPHEMERAL) {
+  const b = document.getElementById('ephemeral-banner');
+  if (b) b.style.display = 'block';
+  document.title = '🧪 ' + document.title;
+}
 renderAll();
 startCloudSync();
 </script>
