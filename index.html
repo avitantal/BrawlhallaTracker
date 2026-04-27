@@ -1822,6 +1822,17 @@ function switchTab(tab) {
   document.getElementById('tab-' + tab).classList.add('active');
 }
 
+// ==================== CLOUD SYNC CONFIG ====================
+const NPOINT_URL = 'https://api.npoint.io/b7275d2b6667ef000f12'; // Paste your https://api.npoint.io/... URL here to enable sync
+const NPOINT_TOKEN = ''; // Optional npoint token, if configured
+const LOCAL_ONLY = false;
+const SYNC_INTERVAL_MS = 2500;
+const REMOTE_SAVE_DEBOUNCE_MS = 450;
+const LOCAL_DIRTY_SYNC_GRACE_MS = 5000;
+const CLIENT_ID_STORAGE_KEY = 'brawl_sync_client_id';
+
+const CLIENT_ID = getOrCreateClientId();
+
 // ==================== STATE ====================
 let state = {
   fighters: [],
@@ -1829,6 +1840,7 @@ let state = {
   activeSessionId: null,
   archive: [],
   scoring: { 1: 10, 2: 6, 3: 3, 4: 1 },
+  meta: { version: 1, updatedAt: 0, updatedBy: CLIENT_ID },
   editingFighter: null
 };
 
@@ -1854,19 +1866,105 @@ function ensureSessionDefaults(s) {
 }
 
 // ==================== PERSISTENCE ====================
-function save() {
+let lastRemoteText = '';
+let remoteSaveTimer = null;
+let remoteSaveInFlight = false;
+let localDirty = false;
+let suppressRemoteSyncUntil = 0;
+
+function getOrCreateClientId() {
+  try {
+    let id = localStorage.getItem(CLIENT_ID_STORAGE_KEY);
+    if (!id) {
+      id = (window.crypto && window.crypto.randomUUID)
+        ? window.crypto.randomUUID()
+        : `client-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      localStorage.setItem(CLIENT_ID_STORAGE_KEY, id);
+    }
+    return id;
+  } catch(e) {
+    return `client-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  }
+}
+
+function cloudSyncEnabled() {
+  return !LOCAL_ONLY && Boolean(NPOINT_URL);
+}
+
+function isPlainObject(value) {
+  return value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function hasMeaningfulState(data = state) {
+  return Boolean(
+    (Array.isArray(data.fighters) && data.fighters.length) ||
+    (Array.isArray(data.sessions) && data.sessions.length) ||
+    (Array.isArray(data.archive) && data.archive.length)
+  );
+}
+
+function isEmptyRemoteData(data) {
+  return !hasMeaningfulState(data) && !(data.meta && data.meta.updatedAt);
+}
+
+function normalizeState() {
+  if (!Array.isArray(state.fighters)) state.fighters = [];
+  if (!Array.isArray(state.sessions)) state.sessions = [];
+  if (!Array.isArray(state.archive)) state.archive = [];
+  if (!isPlainObject(state.scoring)) state.scoring = { 1: 10, 2: 6, 3: 3, 4: 1 };
+  if (!isPlainObject(state.meta)) state.meta = { version: 1, updatedAt: 0, updatedBy: CLIENT_ID };
+  if (typeof state.meta.version !== 'number') state.meta.version = 1;
+  if (typeof state.meta.updatedAt !== 'number') state.meta.updatedAt = 0;
+  if (!state.meta.updatedBy) state.meta.updatedBy = CLIENT_ID;
+  state.sessions.forEach(ensureSessionDefaults);
+  if (state.activeSessionId && !state.sessions.find(s => s.id === state.activeSessionId)) {
+    state.activeSessionId = state.sessions[0]?.id || null;
+  }
+}
+
+function getPersistedState() {
+  return {
+    fighters: state.fighters,
+    sessions: state.sessions,
+    activeSessionId: state.activeSessionId,
+    archive: state.archive,
+    scoring: state.scoring,
+    meta: state.meta
+  };
+}
+
+function markLocalChange() {
+  state.meta = {
+    version: 1,
+    updatedAt: Date.now(),
+    updatedBy: CLIENT_ID
+  };
+  localDirty = true;
+  suppressRemoteSyncUntil = Date.now() + LOCAL_DIRTY_SYNC_GRACE_MS;
+}
+
+function saveLocal() {
   localStorage.setItem('brawl_fighters', JSON.stringify(state.fighters));
   localStorage.setItem('brawl_sessions', JSON.stringify(state.sessions));
   localStorage.setItem('brawl_active_session_id', JSON.stringify(state.activeSessionId));
   localStorage.setItem('brawl_archive', JSON.stringify(state.archive));
   localStorage.setItem('brawl_scoring', JSON.stringify(state.scoring));
+  localStorage.setItem('brawl_meta', JSON.stringify(state.meta));
 }
 
-function load() {
+function save() {
+  markLocalChange();
+  saveLocal();
+  queueRemoteSave();
+}
+
+function loadLocal() {
   try {
     state.fighters = JSON.parse(localStorage.getItem('brawl_fighters') || '[]');
     state.sessions = JSON.parse(localStorage.getItem('brawl_sessions') || '[]');
     state.activeSessionId = JSON.parse(localStorage.getItem('brawl_active_session_id') || 'null');
+    state.archive = JSON.parse(localStorage.getItem('brawl_archive') || '[]');
+    state.meta = JSON.parse(localStorage.getItem('brawl_meta') || 'null') || state.meta;
     // Migrate legacy single-session storage
     const legacy = JSON.parse(localStorage.getItem('brawl_session') || 'null');
     if (legacy && !state.sessions.find(s => s.id === legacy.id)) {
@@ -1874,20 +1972,113 @@ function load() {
       if (!state.activeSessionId) state.activeSessionId = legacy.id;
       localStorage.removeItem('brawl_session');
     }
-    state.sessions.forEach(ensureSessionDefaults);
-    if (state.activeSessionId && !state.sessions.find(s => s.id === state.activeSessionId)) {
-      state.activeSessionId = state.sessions[0]?.id || null;
-    }
-    state.archive = JSON.parse(localStorage.getItem('brawl_archive') || '[]');
     const sc = JSON.parse(localStorage.getItem('brawl_scoring') || 'null');
     if (sc) state.scoring = sc;
-  } catch(e) {}
+    normalizeState();
+  } catch(e) {
+    console.warn('local load failed', e);
+  }
+}
+
+function applyRemoteState(data) {
+  if (!data || typeof data !== 'object') return;
+  const previousActiveSessionId = state.activeSessionId;
+  if (Array.isArray(data.fighters)) state.fighters = data.fighters;
+  if (Array.isArray(data.sessions)) state.sessions = data.sessions;
+  if (Object.prototype.hasOwnProperty.call(data, 'activeSessionId')) {
+    const previousSessionStillExists = state.sessions.some(s => s.id === previousActiveSessionId);
+    if (!previousSessionStillExists) state.activeSessionId = data.activeSessionId;
+  }
+  if (Array.isArray(data.archive)) state.archive = data.archive;
+  if (isPlainObject(data.scoring)) state.scoring = data.scoring;
+  if (isPlainObject(data.meta)) state.meta = data.meta;
+  normalizeState();
+  saveLocal();
+}
+
+function queueRemoteSave({ immediate = false } = {}) {
+  if (!cloudSyncEnabled()) return;
+  clearTimeout(remoteSaveTimer);
+  remoteSaveTimer = setTimeout(saveRemoteNow, immediate ? 0 : REMOTE_SAVE_DEBOUNCE_MS);
+}
+
+async function saveRemoteNow() {
+  if (!cloudSyncEnabled() || remoteSaveInFlight) {
+    if (remoteSaveInFlight) queueRemoteSave();
+    return;
+  }
+  remoteSaveInFlight = true;
+  const payload = getPersistedState();
+  const body = JSON.stringify(payload);
+  try {
+    const res = await fetch(NPOINT_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(NPOINT_TOKEN ? { 'Token': NPOINT_TOKEN } : {})
+      },
+      body
+    });
+    if (!res.ok) throw new Error(`remote save failed: ${res.status}`);
+    lastRemoteText = body;
+    if (state.meta?.updatedAt === payload.meta?.updatedAt) localDirty = false;
+  } catch(e) {
+    console.warn('remote save failed', e);
+  } finally {
+    remoteSaveInFlight = false;
+  }
+}
+
+async function syncFromRemote({ initial = false } = {}) {
+  if (!cloudSyncEnabled()) return;
+  if (rollInProgress || remoteSaveInFlight) return;
+  if (localDirty && Date.now() < suppressRemoteSyncUntil) return;
+
+  try {
+    const res = await fetch(NPOINT_URL, {
+      headers: NPOINT_TOKEN ? { 'Token': NPOINT_TOKEN } : {}
+    });
+    if (!res.ok) throw new Error(`remote load failed: ${res.status}`);
+    const text = await res.text();
+    if (!text || text === lastRemoteText) return;
+
+    const data = JSON.parse(text);
+    const remoteUpdatedAt = data.meta?.updatedAt || 0;
+    const localUpdatedAt = state.meta?.updatedAt || 0;
+
+    if (initial && isEmptyRemoteData(data) && hasMeaningfulState(state)) {
+      queueRemoteSave({ immediate: true });
+      return;
+    }
+
+    if (localDirty && localUpdatedAt > remoteUpdatedAt) {
+      queueRemoteSave({ immediate: true });
+      return;
+    }
+
+    lastRemoteText = text;
+    applyRemoteState(data);
+    localDirty = false;
+    renderAll();
+  } catch(e) {
+    console.warn('remote sync failed', e);
+  }
+}
+
+function startCloudSync() {
+  if (!cloudSyncEnabled()) return;
+  syncFromRemote({ initial: true });
+  setInterval(syncFromRemote, SYNC_INTERVAL_MS);
+}
+
+function load() {
+  loadLocal();
 }
 
 function switchSession(id) {
   if (!state.sessions.find(s => s.id === id)) return;
   state.activeSessionId = id;
-  save();
+  saveLocal();
   renderAll();
 }
 
@@ -3276,6 +3467,7 @@ function renderAll() {
 // ==================== INIT ====================
 load();
 renderAll();
+startCloudSync();
 </script>
 </body>
 </html>
