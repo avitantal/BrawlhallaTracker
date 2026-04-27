@@ -2479,6 +2479,16 @@ function checkRemoteRoll() {
   if (rid.startsWith(CLIENT_ID + '-')) return; // it's our own roll
   const panel = document.getElementById('center-panel');
   if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  const fm = GAME_MODES[sess.currentMode || 'normal'];
+  let extra = '';
+  if (sess.currentMode === 'hunted' && sess.currentHuntedId) {
+    const h = sess.fighters.find(f => f.id === sess.currentHuntedId);
+    if (h) extra = ` — ניצוד: ${h.name}`;
+  } else if (sess.currentMode === 'pairs' && sess.currentPairs) {
+    const names = sess.currentPairs.map(p => p.map(id => sess.fighters.find(f => f.id === id)?.name).filter(Boolean).join(' & ')).join(' | ');
+    if (names) extra = ` — ${names}`;
+  }
+  toast(`📡 הוגרל: ${fm.emoji} ${fm.name}${extra}`);
   showRemoteRollReveal(sess);
 }
 
