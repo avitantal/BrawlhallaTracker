@@ -1708,6 +1708,13 @@ input:focus {
         </div>
       </div>
 
+      <!-- EPHEMERAL TEST MODE -->
+      <div class="panel">
+        <div class="panel-title">🧪 מצב בדיקות</div>
+        <div id="ephemeral-status" style="font-size:0.85rem;color:var(--text2);margin-bottom:10px;line-height:1.5;"></div>
+        <button id="ephemeral-toggle-btn" class="btn btn-primary" style="width:100%" onclick="toggleEphemeralMode()"></button>
+      </div>
+
       <!-- FIGHTER POOL -->
       <div class="panel panel-last" id="pool-panel-wrap">
         <div class="panel-title">👥 בריכת הלוחמים</div>
@@ -2357,6 +2364,34 @@ function saveScoring() {
   });
   save();
   toast('הגדרות האגוזים נשמרו!');
+}
+
+function renderEphemeralPanel() {
+  const statusEl = document.getElementById('ephemeral-status');
+  const btnEl = document.getElementById('ephemeral-toggle-btn');
+  if (!statusEl || !btnEl) return;
+  if (EPHEMERAL) {
+    statusEl.innerHTML = `<b style="color:#ff8a8a;">🧪 פעיל כרגע.</b> שינויים לא נשמרים — רענון רגיל יאפס. הענן ו־localStorage חסומים.`;
+    btnEl.textContent = '⏻ צא ממצב בדיקות';
+    btnEl.className = 'btn btn-danger';
+    btnEl.style.width = '100%';
+  } else {
+    statusEl.innerHTML = `מצב נסיוני שמבודד את האפליקציה: ללא localStorage, ללא ענן, רענון = איפוס. שימושי לבדוק מודים/הגרלות בלי "ללכלך" את הסשנים שלך.`;
+    btnEl.textContent = '🧪 הפעל מצב בדיקות (ייטען מחדש)';
+    btnEl.className = 'btn btn-primary';
+    btnEl.style.width = '100%';
+  }
+}
+
+function toggleEphemeralMode() {
+  const url = new URL(window.location.href);
+  if (EPHEMERAL) {
+    url.searchParams.delete('test');
+    url.searchParams.delete('ephemeral');
+  } else {
+    url.searchParams.set('test', '1');
+  }
+  window.location.href = url.toString();
 }
 
 // ==================== GAME MODES ====================
@@ -3926,6 +3961,7 @@ function renderAll() {
   renderFirstHitLeaderboard();
   renderGameHistory();
   renderArchive();
+  renderEphemeralPanel();
 }
 
 // ==================== INIT ====================
