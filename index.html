@@ -2477,6 +2477,8 @@ function checkRemoteRoll() {
   lastSeenRollIds[sess.id] = rid;
   if (seen === undefined || seen === rid) return; // first sight on load OR same roll
   if (rid.startsWith(CLIENT_ID + '-')) return; // it's our own roll
+  const panel = document.getElementById('center-panel');
+  if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
   showRemoteRollReveal(sess);
 }
 
