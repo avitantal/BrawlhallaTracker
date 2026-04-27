@@ -2066,7 +2066,7 @@ async function syncFromRemote({ initial = false } = {}) {
     applyRemoteState(data);
     localDirty = false;
     renderAll();
-    checkRemoteRoll();
+    checkRemoteRoll({ silent: initial });
   } catch(e) {
     console.warn('remote sync failed', e);
   }
@@ -2468,14 +2468,21 @@ function showRemoteRollReveal(sess) {
   }
 }
 
-function checkRemoteRoll() {
+function checkRemoteRoll(opts = {}) {
   const sess = state.session;
   if (!sess) return;
   const rid = sess.lastRollId;
+  // Seed seen-IDs for ALL known sessions so future changes are detected
+  state.sessions.forEach(s => {
+    if (s.lastRollId && lastSeenRollIds[s.id] === undefined) {
+      lastSeenRollIds[s.id] = s.lastRollId;
+    }
+  });
+  if (opts.silent) return; // Initial load: just seed, don't reveal
   if (!rid) return;
   const seen = lastSeenRollIds[sess.id];
+  if (seen === rid) return;
   lastSeenRollIds[sess.id] = rid;
-  if (seen === undefined || seen === rid) return; // first sight on load OR same roll
   if (rid.startsWith(CLIENT_ID + '-')) return; // it's our own roll
   const panel = document.getElementById('center-panel');
   if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
