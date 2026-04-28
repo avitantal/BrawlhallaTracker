@@ -2506,7 +2506,7 @@ const GAME_MODES = {
   kingslayer: { id:'kingslayer', emoji:'👑', name:'Kingslayer',          desc:'נקודת בונוס לכל נוקאאוט של מוביל הסשן.',                       color:'#ffd700' },
   underdog:   { id:'underdog',   emoji:'💀', name:'Underdog Rage',       desc:'המקום האחרון בסשן מקבל נקודת בונוס לכל נוקאאוט שלו.',         color:'#7a4dff' },
   pairs:      { id:'pairs',      emoji:'🤝', name:'קרב זוגות',           desc:'שני זוגות מתמודדים — הזוג המנצח מקבל 2 נקודות לכל לוחם, המפסידים 0.', color:'#3a8fff' },
-  solo:       { id:'solo',       emoji:'🥊', name:'3VS1 / 2VS1',         desc:'לוחם בודד עם HP נוסף נגד כל השאר. אם הבודד ניצח — +3 לו וכלום לאחרים. אם הפסיד — +1 לכל יריב.', color:'#ff3a3a' },
+  solo:       { id:'solo',       emoji:'🥊', name:'3 VS 1 / 2 VS 1',         desc:'לוחם בודד עם HP נוסף נגד כל השאר. אם הבודד ניצח — +3 לו וכלום לאחרים. אם הפסיד — +1 לכל יריב.', color:'#ff3a3a' },
 };
 const SPECIAL_MODE_IDS = ['palestine','hunted','kingslayer','underdog','pairs','solo'];
 
@@ -2528,7 +2528,7 @@ function getModeDef(id, fighterCount) {
   const m = GAME_MODES[id];
   if (!m) return GAME_MODES.normal;
   if (id === 'solo') {
-    const label = fighterCount === 3 ? '2VS1' : '3VS1';
+    const label = fighterCount === 3 ? '2 VS 1' : '3 VS 1';
     return { ...m, name: label };
   }
   return m;
@@ -2669,7 +2669,7 @@ function showRemoteRollReveal(sess) {
       layer.className = 'hunted-reveal';
       layer.innerHTML = `
         <div class="hunted-reveal-card" style="border-color:#ff3a3a;box-shadow:0 0 30px #ff3a3a90;">
-          <div class="hunted-reveal-status" style="color:#ff8a8a;">🥊 ${others.length}VS1 — הבודד הוא...</div>
+          <div class="hunted-reveal-status" style="color:#ff8a8a;">🥊 ${others.length} VS 1 — הבודד הוא...</div>
           <div class="hunted-reveal-avatar">${getAvatar(lone)}</div>
           <div class="hunted-reveal-name" style="color:#ff8a8a;">${lone.name}</div>
           <div style="margin-top:8px;font-size:0.95rem;color:#ffd5d5;font-weight:700;">${sess.soloHp || 2}HP · השאר 1HP</div>
@@ -2922,7 +2922,7 @@ function rollNextMode() {
           layer.className = 'hunted-reveal';
           layer.innerHTML = `
             <div class="hunted-reveal-card" style="border-color:#ff3a3a;box-shadow:0 0 30px #ff3a3a90;">
-              <div class="hunted-reveal-status" style="color:#ff8a8a;">🥊 ${others.length}VS1 — הבודד הוא...</div>
+              <div class="hunted-reveal-status" style="color:#ff8a8a;">🥊 ${others.length} VS 1 — הבודד הוא...</div>
               <div class="hunted-reveal-avatar">${getAvatar(lone)}</div>
               <div class="hunted-reveal-name" style="color:#ff8a8a;">${lone.name}</div>
               <div style="margin-top:8px;font-size:0.95rem;color:#ffd5d5;font-weight:700;">${sess.soloHp || 2}HP · השאר 1HP</div>
