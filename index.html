@@ -1805,15 +1805,6 @@ input:focus {
           משחקים, אחד מיוחד
         </label>
       </div>
-      <div style="display:flex;justify-content:center;align-items:center;gap:14px;flex-wrap:wrap;font-size:0.8rem;">
-        <span style="color:var(--text3);">🥊 HP של הבודד ב־3VS1/2VS1:</span>
-        <label style="display:flex;align-items:center;gap:4px;cursor:pointer;">
-          <input type="radio" name="session-solo-hp" value="2" checked /> 2HP
-        </label>
-        <label style="display:flex;align-items:center;gap:4px;cursor:pointer;">
-          <input type="radio" name="session-solo-hp" value="3" /> 3HP
-        </label>
-      </div>
     </div>
     <div style="display:flex;gap:10px;justify-content:center">
       <button class="btn btn-primary" onclick="confirmSessionStart()">⚔️ התחל סשן!</button>
@@ -3249,8 +3240,7 @@ function confirmSessionStart() {
   const strategy = (interactive && strategyEl) ? strategyEl.value : 'random';
   const patternEveryRaw = parseInt(document.getElementById('session-pattern-every')?.value || '3');
   const patternEvery = Math.max(2, isNaN(patternEveryRaw) ? 3 : patternEveryRaw);
-  const soloHpRaw = parseInt(document.querySelector('input[name="session-solo-hp"]:checked')?.value || '2');
-  const soloHp = (soloHpRaw === 3) ? 3 : 2;
+  const soloHp = 2;
   const newSession = {
     id: Date.now(),
     startTime: Date.now(),
