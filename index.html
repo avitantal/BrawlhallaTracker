@@ -2494,7 +2494,7 @@ function toggleEphemeralMode() {
   } else {
     url.searchParams.set('test', '1');
   }
-  window.location.href = url.toString();
+  window.location.replace(url.toString());
 }
 
 // ==================== GAME MODES ====================
