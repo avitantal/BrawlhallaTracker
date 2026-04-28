@@ -1828,24 +1828,23 @@ input:focus {
 <!-- STRATEGY EDIT MODAL -->
 <div id="strategy-modal" class="confirm-modal-bg hidden">
   <div class="confirm-modal" style="max-width:520px;">
-    <h3>הגדרות מוד אינטראקטיבי</h3>
-    <div style="font-size:0.78rem;color:var(--text2);text-transform:uppercase;letter-spacing:2px;margin-bottom:8px;">אסטרטגיה</div>
-    <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:18px;font-size:0.9rem;color:var(--text);">
-      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+    <h3 style="margin-bottom:14px;">הגדרות מוד אינטראקטיבי</h3>
+    <div style="font-size:0.72rem;color:var(--text2);text-transform:uppercase;letter-spacing:2px;margin-bottom:6px;">אסטרטגיה</div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px 14px;margin-bottom:16px;font-size:0.85rem;color:var(--text);align-items:center;">
+      <label style="display:flex;align-items:center;gap:5px;cursor:pointer;">
         <input type="radio" name="strategy-edit" value="random" onchange="updateModesEditSummary()" /> 🎲 רנדומלי
       </label>
-      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;flex-wrap:wrap;">
-        <input type="radio" name="strategy-edit" value="pattern" onchange="updateModesEditSummary()" /> 📋 מסודר — כל
-        <input type="number" id="strategy-edit-every" min="2" value="3" style="width:60px;text-align:center;" />
-        משחקים, אחד מיוחד
+      <label style="display:flex;align-items:center;gap:5px;cursor:pointer;">
+        <input type="radio" name="strategy-edit" value="pattern" onchange="updateModesEditSummary()" /> 📋 כל
+        <input type="number" id="strategy-edit-every" min="2" value="3" style="width:46px;text-align:center;" />
       </label>
-      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
-        <input type="radio" name="strategy-edit" value="none" onchange="updateModesEditSummary()" /> ⚔️ ללא מודים מיוחדים — תמיד משחק רגיל
+      <label style="display:flex;align-items:center;gap:5px;cursor:pointer;">
+        <input type="radio" name="strategy-edit" value="none" onchange="updateModesEditSummary()" /> ⚔️ ללא
       </label>
     </div>
-    <div style="font-size:0.78rem;color:var(--text2);text-transform:uppercase;letter-spacing:2px;margin-bottom:8px;">מודים מיוחדים פעילים</div>
-    <div id="modes-edit-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;font-size:0.88rem;"></div>
-    <div id="modes-edit-summary" style="font-size:0.78rem;color:var(--text3);margin-bottom:18px;"></div>
+    <div style="font-size:0.72rem;color:var(--text2);text-transform:uppercase;letter-spacing:2px;margin-bottom:6px;">מודים מיוחדים פעילים</div>
+    <div id="modes-edit-list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px;font-size:0.85rem;"></div>
+    <div id="modes-edit-summary" style="font-size:0.74rem;color:var(--text3);margin-bottom:14px;"></div>
     <div class="btn-row">
       <button class="btn btn-primary btn-sm" onclick="applyStrategyEdit()">שמור</button>
       <button class="btn btn-ghost btn-sm" onclick="closeStrategyEditor()">ביטול</button>
@@ -2994,11 +2993,11 @@ function renderModesEditList() {
       disabled = true; hint = ' (זמין רק עם 3 או 4 לוחמים)';
     }
     return `
-      <label style="display:flex;align-items:flex-start;gap:8px;cursor:${disabled ? 'not-allowed' : 'pointer'};opacity:${disabled ? 0.5 : 1};">
-        <input type="checkbox" data-mode="${id}" ${enabled.has(id) ? 'checked' : ''} ${disabled ? 'disabled' : ''} onchange="updateModesEditSummary()" />
-        <div style="flex:1;">
-          <div style="font-weight:700;color:${m.color};">${m.emoji} ${m.name}${hint}</div>
-          <div style="font-size:0.72rem;color:var(--text3);">${m.desc}</div>
+      <label style="display:flex;align-items:center;gap:8px;cursor:${disabled ? 'not-allowed' : 'pointer'};opacity:${disabled ? 0.5 : 1};min-width:0;">
+        <input type="checkbox" data-mode="${id}" ${enabled.has(id) ? 'checked' : ''} ${disabled ? 'disabled' : ''} onchange="updateModesEditSummary()" style="flex-shrink:0;" />
+        <div style="flex:1;min-width:0;overflow:hidden;">
+          <div style="font-weight:700;color:${m.color};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${m.emoji} ${m.name}${hint}</div>
+          <div style="font-size:0.7rem;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${m.desc.replace(/"/g,'&quot;')}">${m.desc}</div>
         </div>
       </label>
     `;
