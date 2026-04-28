@@ -2997,7 +2997,7 @@ function renderModesEditList() {
         <input type="checkbox" data-mode="${id}" ${enabled.has(id) ? 'checked' : ''} ${disabled ? 'disabled' : ''} onchange="updateModesEditSummary()" style="flex-shrink:0;" />
         <div style="flex:1;min-width:0;overflow:hidden;">
           <div style="font-weight:700;color:${m.color};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${m.emoji} ${m.name}${hint}</div>
-          <div style="font-size:0.7rem;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${m.desc.replace(/"/g,'&quot;')}">${m.desc}</div>
+          <div style="font-size:0.7rem;color:var(--text3);line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;cursor:pointer;" title="${m.desc.replace(/"/g,'&quot;')}" onclick="event.preventDefault();this.style.webkitLineClamp=this.style.webkitLineClamp==='unset'?'2':'unset';">${m.desc}</div>
         </div>
       </label>
     `;
