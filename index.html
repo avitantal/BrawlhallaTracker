@@ -3456,7 +3456,7 @@ function renderGameArea() {
     html += `<div class="game-number-tag">GAME ${gameNum} · בחר סדר סיום</div>`;
 
     if (!firstHitId) {
-      html += `<div class="next-place-hint">לחץ על הומו המשחק (ראשון שיצא)</div>`;
+      html += `<div class="next-place-hint" style="color:#ff5ac8;font-weight:700;font-style:normal;font-size:0.9rem;background:#ff5ac815;border:1px solid #ff5ac840;border-radius:8px;padding:6px 12px;">💗 לחץ על הומו המשחק (ראשון שיצא)</div>`;
     } else if (!allPlaced) {
       html += `<div class="next-place-hint">לחץ על הלוחם שסיים במקום ${maxPlace - placedCount}</div>`;
     }
