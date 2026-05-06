@@ -2558,16 +2558,13 @@ function computeModeBonus(sess, game) {
   const bonus = {};
   const ko = game.knockouts || {};
   if (game.mode === 'palestine' && game.firstHitId) {
-    const homoKO = ko[game.firstHitId] || 0;
-    sess.fighters.forEach(f => { bonus[f.id] = homoKO; });
+    sess.fighters.forEach(f => { bonus[f.id] = ko[f.id] || 0; });
     bonus[game.firstHitId] = 0;
   } else if (game.mode === 'hunted' && game.huntedId) {
-    const huntedKO = ko[game.huntedId] || 0;
-    sess.fighters.forEach(f => { bonus[f.id] = huntedKO; });
+    sess.fighters.forEach(f => { bonus[f.id] = ko[f.id] || 0; });
     bonus[game.huntedId] = 0;
   } else if (game.mode === 'kingslayer' && game.leaderId) {
-    const leaderKO = ko[game.leaderId] || 0;
-    sess.fighters.forEach(f => { bonus[f.id] = leaderKO; });
+    sess.fighters.forEach(f => { bonus[f.id] = ko[f.id] || 0; });
     bonus[game.leaderId] = 0;
   } else if (game.mode === 'underdog' && game.lastId) {
     bonus[game.lastId] = ko[game.lastId] || 0;
@@ -3313,10 +3310,10 @@ function renderGameArea() {
   const gameNum = sess.games.length + 1;
   const placedCount = Object.keys(sess.currentPlacements).length;
   const totalFighters = sess.currentGameFighters.length;
-  const nextPlace = placedCount + 1;
-  const allPlaced = placedCount >= Math.min(totalFighters, 4);
+  const maxPlace = Math.min(totalFighters, 4);
+  const allPlaced = placedCount >= maxPlace;
   const firstHitId = sess.currentFirstHitId;
-  const readyToSave = allPlaced && !!firstHitId;
+  const readyToSave = allPlaced;
 
   const curMode = sess.currentMode || 'normal';
   const curModeDef = getModeDef(curMode, sess.fighters.length);
@@ -3458,7 +3455,10 @@ function renderGameArea() {
     html += `<div class="game-number-tag">GAME ${gameNum} · בחר סדר סיום</div>`;
 
     if (!allPlaced) {
-      html += `<div class="next-place-hint">לחץ על הלוחם שסיים במקום ${nextPlace}</div>`;
+      const hint = placedCount === 0
+        ? 'לחץ על הומו המשחק (ראשון שיצא)'
+        : `לחץ על הלוחם שסיים במקום ${maxPlace - placedCount}`;
+      html += `<div class="next-place-hint">${hint}</div>`;
     }
 
     html += `<div class="placement-zone">`;
@@ -3493,23 +3493,8 @@ function renderGameArea() {
     }).join('');
     html += `</div>`;
 
-    if (allPlaced) {
-      html += `
-        <div class="first-hit-section">
-          <div class="first-hit-title">בחר מי הוא הומו המשחק?</div>
-          <div class="first-hit-picker">
-            ${sess.currentGameFighters.map(f => `
-              <button type="button" class="first-hit-option ${firstHitId === f.id ? 'selected' : ''}" onclick="selectFirstHit(${f.id})">
-                ${getAvatar(f)} ${f.name}
-              </button>
-            `).join('')}
-          </div>
-        </div>
-      `;
-    }
-
-    // Knockout counts step (after placements + firstHit selected, only for special modes)
-    if (isSpecial && allPlaced && firstHitId) {
+    // Knockout counts step (after all placements done, only for special modes)
+    if (isSpecial && allPlaced) {
       let trackedId = null;
       if (curMode === 'palestine') trackedId = sess.currentFirstHitId;
       else if (curMode === 'hunted') trackedId = sess.currentHuntedId;
@@ -3551,8 +3536,6 @@ function renderGameArea() {
     html += `<div class="game-btn-row">`;
     if (readyToSave) {
       html += `<button class="btn btn-success" onclick="saveGame()">💾 שמור משחק</button>`;
-    } else if (allPlaced && !firstHitId) {
-      html += `<div class="save-requirement">בחר הומו כדי להמשיך</div>`;
     }
     html += `<button class="btn btn-ghost btn-sm" onclick="resetPlacements()">🔄 אפס</button>`;
     html += `</div>`;
@@ -3586,15 +3569,7 @@ function startCurrentGame() {
 }
 
 function handleGameFighterClick(fid) {
-  const sess = state.session;
-  if (!sess) return;
-  const placed = Object.keys(sess.currentPlacements).length;
-  const maxPlace = Math.min(sess.currentGameFighters.length, 4);
-  if (placed >= maxPlace) {
-    selectFirstHit(fid);
-  } else {
-    assignPlacement(fid);
-  }
+  assignPlacement(fid);
 }
 
 function assignPlacement(fid) {
@@ -3604,7 +3579,14 @@ function assignPlacement(fid) {
   const placed = Object.keys(sess.currentPlacements).length;
   const maxPlace = Math.min(sess.currentGameFighters.length, 4);
   if (placed >= maxPlace) return;
-  sess.currentPlacements[fid] = placed + 1;
+  if (placed === 0) {
+    // First click = homo = last place
+    sess.currentPlacements[fid] = maxPlace;
+    sess.currentFirstHitId = fid;
+  } else {
+    // Subsequent clicks fill from maxPlace-1 down to 1
+    sess.currentPlacements[fid] = maxPlace - placed;
+  }
   save();
   renderGameArea();
 }
@@ -3688,11 +3670,6 @@ function saveGame() {
     toast('בחר דירוג סיום לפני השמירה');
     return;
   }
-  if (!sess.currentFirstHitId) {
-    toast('בחר הומו המשחק לפני השמירה');
-    return;
-  }
-
   // Confirm before finalizing
   const homo = sess.fighters.find(f => f.id === sess.currentFirstHitId);
   let summary = `הומו המשחק: ${homo ? getAvatar(homo) + ' ' + homo.name : '—'}\nמוד: ${modeDef.emoji} ${modeDef.name}`;
