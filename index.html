@@ -3455,6 +3455,45 @@ function renderGameArea() {
   } else if (sess.currentGameStarted) {
     html += `<div class="game-number-tag">GAME ${gameNum} · בחר סדר סיום</div>`;
 
+    // Live knockout counter — always visible for special modes
+    if (isSpecial && curMode !== 'pairs' && curMode !== 'solo') {
+      let trackedId = null;
+      if (curMode === 'hunted') trackedId = sess.currentHuntedId;
+      else if (curMode === 'kingslayer') trackedId = getSessionLeaderId(sess);
+      else if (curMode === 'underdog') trackedId = getSessionLastId(sess);
+      else if (curMode === 'palestine') trackedId = sess.currentFirstHitId;
+
+      const trackedFighter = trackedId ? sess.fighters.find(x => x.id === trackedId) : null;
+      let liveHeading;
+      if (curMode === 'underdog') liveHeading = `נוקאאוטים של האנדרדוג`;
+      else if (trackedFighter) liveHeading = `נוקאאוטים על ${getAvatar(trackedFighter)} ${trackedFighter.name}`;
+      else liveHeading = `נוקאאוטים`;
+
+      const koFighters = curMode === 'underdog' && trackedFighter
+        ? [trackedFighter]
+        : sess.currentGameFighters.filter(f => !trackedId || f.id !== trackedId);
+
+      html += `
+        <div style="margin-bottom:12px;padding:10px 12px;border-radius:10px;border:1px solid ${curModeDef.color}50;background:${curModeDef.color}0d;">
+          <div style="font-size:0.78rem;font-weight:700;color:${curModeDef.color};margin-bottom:7px;text-align:center;">${curModeDef.emoji} ${liveHeading}</div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;justify-content:center;">
+            ${koFighters.map(f => {
+              const c = (sess.currentKnockouts || {})[f.id] || 0;
+              return `
+                <div style="display:flex;align-items:center;gap:6px;padding:5px 9px;border-radius:8px;background:var(--bg2);border:1px solid var(--border);">
+                  <span style="font-size:1rem;">${getAvatar(f)}</span>
+                  <span style="font-size:0.78rem;">${f.name}</span>
+                  <span style="min-width:20px;text-align:center;font-weight:700;color:${curModeDef.color};font-size:0.95rem;">${c}</span>
+                  <button class="btn btn-primary btn-sm" style="padding:2px 8px;font-size:0.82rem;" onclick="incKnockout(${f.id})">+1</button>
+                  ${c > 0 ? `<button class="btn btn-ghost btn-sm" style="padding:2px 6px;font-size:0.72rem;" onclick="resetKnockout(${f.id})" title="אפס">×</button>` : ''}
+                </div>
+              `;
+            }).join('')}
+          </div>
+        </div>
+      `;
+    }
+
     if (!firstHitId) {
       html += `<div class="next-place-hint" style="color:#ff5ac8;font-weight:700;font-style:normal;font-size:0.9rem;background:#ff5ac815;border:1px solid #ff5ac840;border-radius:8px;padding:6px 12px;">💗 לחץ על הומו המשחק (ראשון שיצא)</div>`;
     } else if (!allPlaced) {
@@ -3492,46 +3531,6 @@ function renderGameArea() {
       `;
     }).join('');
     html += `</div>`;
-
-    // Knockout counts step (after all placements done, only for special modes)
-    if (isSpecial && allPlaced) {
-      let trackedId = null;
-      if (curMode === 'palestine') trackedId = sess.currentFirstHitId;
-      else if (curMode === 'hunted') trackedId = sess.currentHuntedId;
-      else if (curMode === 'kingslayer') trackedId = getSessionLeaderId(sess);
-      else if (curMode === 'underdog') trackedId = getSessionLastId(sess);
-
-      const trackedFighter = trackedId ? sess.fighters.find(x => x.id === trackedId) : null;
-      let heading;
-      if (curMode === 'underdog') heading = `כמה נוקאאוטים עשה האנדרדוג?`;
-      else if (curMode === 'pairs') heading = `כמה נוקאאוטים עשה כל לוחם על היריב?`;
-      else heading = `כמה נוקאאוטים עשה כל לוחם על ${trackedFighter ? getAvatar(trackedFighter) + ' ' + trackedFighter.name : 'היעד'}?`;
-
-      html += `
-        <div style="margin-top:14px;padding:12px;border-radius:10px;border:1px solid ${curModeDef.color}60;background:${curModeDef.color}10;">
-          <div style="font-size:0.85rem;font-weight:700;color:${curModeDef.color};margin-bottom:8px;text-align:center;">
-            ${curModeDef.emoji} ${heading}
-          </div>
-          <div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;">
-            ${(curMode === 'underdog' && trackedFighter
-                ? [trackedFighter]
-                : sess.currentGameFighters.filter(f => !(['kingslayer','palestine','hunted'].includes(curMode) && f.id === trackedId))
-              ).map(f => {
-              const c = (sess.currentKnockouts || {})[f.id] || 0;
-              return `
-                <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:8px;background:var(--bg2);border:1px solid var(--border);">
-                  <span style="font-size:1.1rem;">${getAvatar(f)}</span>
-                  <span style="font-size:0.8rem;">${f.name}</span>
-                  <span style="min-width:24px;text-align:center;font-weight:700;color:${curModeDef.color};font-size:1rem;">${c}</span>
-                  <button class="btn btn-primary btn-sm" style="padding:2px 10px;font-size:0.85rem;" onclick="incKnockout(${f.id})">+1</button>
-                  ${c > 0 ? `<button class="btn btn-ghost btn-sm" style="padding:2px 8px;font-size:0.75rem;" onclick="resetKnockout(${f.id})" title="אפס">×</button>` : ''}
-                </div>
-              `;
-            }).join('')}
-          </div>
-        </div>
-      `;
-    }
 
     html += `<div class="game-btn-row">`;
     if (readyToSave) {
