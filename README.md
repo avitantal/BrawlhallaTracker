@@ -85,7 +85,7 @@
 - טבלת state JSON עם `upsert` בכל שינוי מקומי: `kv_store` במצב רגיל, `kv_store_test` במצב בדיקות.
 - `kv_store_test` חייבת מבנה והרשאות Realtime זהים ל־`kv_store`.
 - ערוץ `Realtime` ל־postgres_changes → פוש מיידי בין מכשירים.
-- ערוץ Presence נפרד (`${SYNC_TABLE}_presence`) keyed ב־`CLIENT_ID` — מזין את חיווי "חברים מחוברים" (sync/join/leave → ספירה חיה, untrack ב־`pagehide`).
+- ערוץ Presence נפרד (`${SYNC_TABLE}_presence`) keyed ב־`CLIENT_ID` — מזין את חיווי "חברים מחוברים" (sync/join/leave → ספירת כל החיבורים הפעילים, כולל מספר טאבים באותו דפדפן; untrack ב־`beforeunload`).
 - פולינג fallback כל 15 שניות.
 - חשיפת רול מרחוק: זיהוי `currentMode` חדש → הפעלת overlay + toast + scroll גם במכשיר שלא הגריל.
 
