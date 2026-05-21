@@ -1,0 +1,24 @@
+name: Supabase Keep-Alive
+
+# Free-tier Supabase projects are auto-paused after 7 days of inactivity,
+# which kills cloud sync and the online indicator. This workflow makes a
+# tiny REST request once a day so the project is never considered idle.
+# The apikey below is the public "publishable" key — already shipped in
+# index.html — so it is not a secret.
+
+on:
+  schedule:
+    - cron: '23 7 * * *'   # daily, 07:23 UTC (off-peak to reduce queue delay)
+  workflow_dispatch:        # allow manual runs from the Actions tab
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase REST API
+        run: |
+          code=$(curl -sS -o /dev/null -w '%{http_code}' \
+            'https://btthehystdtdujnihrub.supabase.co/rest/v1/kv_store?select=key&limit=1' \
+            -H 'apikey: sb_publishable_gptwS7DYH7eL8qO9WibLog_9nXxUfq4')
+          echo "Supabase REST responded: HTTP $code"
+          test "$code" -ge 200 && test "$code" -lt 300

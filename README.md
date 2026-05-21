@@ -85,9 +85,11 @@
 - טבלת state JSON עם `upsert` בכל שינוי מקומי: `kv_store` במצב רגיל, `kv_store_test` במצב בדיקות.
 - `kv_store_test` חייבת מבנה והרשאות Realtime זהים ל־`kv_store`.
 - ערוץ `Realtime` ל־postgres_changes → פוש מיידי בין מכשירים.
-- ערוץ Presence נפרד (`${SYNC_TABLE}_presence`) keyed ב־`CLIENT_ID` — מזין את חיווי "חברים מחוברים" (sync/join/leave → ספירת כל החיבורים הפעילים, כולל מספר טאבים באותו דפדפן; untrack ב־`beforeunload`).
+- **מיזוג לא־דורסני:** דאטה נכנס עובר `mergePersistedStates` — איחוד סשנים, ארכיון, משחקים ולוחמים לפי מזהה במקום החלפה מלאה. כך מכשירים שערכו דאטה במקביל (למשל אחרי השבתת ענן) לא דורסים זה את זה.
+- **חיווי "חברים מחוברים"** משני מקורות: ערוץ Presence של Realtime (`${SYNC_TABLE}_presence`, keyed ב־`CLIENT_ID`) + fallback של heartbeat — שורות `main:presence:*` ב־`kv_store` שמתרעננות כל 20ש' עם TTL של 55ש'. נספרים כל החיבורים הפעילים.
 - פולינג fallback כל 15 שניות.
 - חשיפת רול מרחוק: זיהוי `currentMode` חדש → הפעלת overlay + toast + scroll גם במכשיר שלא הגריל.
+- ⚠️ פרויקט Supabase ב־tier חינמי מושהה אוטומטית אחרי 7 ימי חוסר פעילות — workflow של GitHub Actions ([keepalive.yml](.github/workflows/keepalive.yml)) שולח ping יומי כדי למנוע זאת.
 
 ### לוגיקת מודים
 
